@@ -1,0 +1,100 @@
+{
+  "name": "Google Stitch - Enterprise IDP Analytics Dashboard Spec",
+  "version": "2.0.0",
+  "author": "Google Stitch UI Engine (Gemini 3.7 Flash)",
+  "aesthetic_philosophy": "Linear-inspired Minimalist Tech with Deep Dark Glassmorphism",
+  "tokens": {
+    "colors": {
+      "background": {
+        "base": "#0F172A",
+        "surface": "rgba(30, 41, 59, 0.5)",
+        "surface_hover": "rgba(30, 41, 59, 0.8)",
+        "card_glow": "rgba(59, 130, 246, 0.08)",
+        "overlay": "rgba(15, 23, 42, 0.75)"
+      },
+      "borders": {
+        "subtle": "rgba(51, 65, 85, 0.6)",
+        "active": "rgba(59, 130, 246, 0.5)",
+        "highlight": "rgba(255, 255, 255, 0.1)"
+      },
+      "accents": {
+        "primary": "#3B82F6",
+        "primary_gradient": ["#3B82F6", "#1D4ED8"],
+        "cyan": "#06B6D4",
+        "emerald": "#10B981",
+        "amber": "#F59E0B",
+        "violet": "#8B5CF6",
+        "rose": "#F43F5E"
+      },
+      "text": {
+        "primary": "#F8FAFC",
+        "secondary": "#94A3B8",
+        "tertiary": "#64748B",
+        "accent": "#60A5FA"
+      }
+    },
+    "typography": {
+      "font_family": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+      "number_font_feature": "tabular-nums",
+      "scales": {
+        "stat_number": "text-3xl font-extrabold tracking-tight",
+        "card_title": "text-xs font-semibold uppercase tracking-wider text-slate-400",
+        "badge_trend": "text-xs font-semibold px-2 py-0.5 rounded-full",
+        "chart_title": "text-base font-semibold text-slate-100"
+      }
+    },
+    "spacing": {
+      "grid_gap": "gap-4 sm:gap-6",
+      "card_padding": "p-5 sm:p-6",
+      "border_radius": "rounded-xl"
+    },
+    "shadows": {
+      "card": "0 4px 20px -2px rgba(0, 0, 0, 0.35)",
+      "card_hover": "0 8px 30px -4px rgba(59, 130, 246, 0.15)",
+      "glow_blue": "0 0 25px -5px rgba(59, 130, 246, 0.4)"
+    }
+  },
+  "components": {
+    "MetricCard": {
+      "layout": "flex flex-col justify-between h-full bg-slate-800/50 backdrop-blur-md border border-slate-700/60 rounded-xl p-5 hover:border-slate-600 transition-all duration-300",
+      "animation": {
+        "initial": { "opacity": 0, "y": 16 },
+        "animate": { "opacity": 1, "y": 0 },
+        "transition": { "type": "spring", "stiffness": 260, "damping": 20 }
+      },
+      "counter": {
+        "duration": 1.2,
+        "format": "intl_locale"
+      }
+    },
+    "UsageLineChart": {
+      "chart_library": "recharts",
+      "chart_type": "AreaChart",
+      "curve_type": "monotone",
+      "stroke_width": 2,
+      "stroke_color": "#3B82F6",
+      "gradient_fill": {
+        "id": "usageGlow",
+        "stops": [
+          { "offset": "5%", "color": "#3B82F6", "opacity": 0.35 },
+          { "offset": "95%", "color": "#3B82F6", "opacity": 0.0 }
+        ]
+      },
+      "grid": {
+        "strokeDasharray": "3 3",
+        "stroke": "rgba(51, 65, 85, 0.3)"
+      },
+      "tooltip": {
+        "background": "rgba(15, 23, 42, 0.85)",
+        "backdropFilter": "blur(12px)",
+        "border": "1px solid rgba(51, 65, 85, 0.8)",
+        "borderRadius": "8px",
+        "boxShadow": "0 10px 25px -5px rgba(0, 0, 0, 0.5)"
+      }
+    },
+    "SkeletonLoader": {
+      "card_skeleton": "animate-pulse bg-slate-800/40 border border-slate-700/40 rounded-xl p-5",
+      "shimmer_gradient": "bg-gradient-to-r from-slate-800/60 via-slate-700/40 to-slate-800/60"
+    }
+  }
+}

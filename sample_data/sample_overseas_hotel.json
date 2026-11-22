@@ -1,0 +1,25 @@
+{
+  "document_type": "commercial_invoice",
+  "invoice_number": "HTL-EUR-49102",
+  "invoice_date": "2026-08-25",
+  "buyer_name": "Enterprise Global Ltd.",
+  "seller_tax_id": "DE123456789",
+  "seller_name": "Euro Plaza Business Hotel",
+  "currency": "EUR",
+  "subtotal": 135.51,
+  "tax_amount": 9.49,
+  "tax_rate": 0.07,
+  "total_amount": 145.0,
+  "expense_category": "H",
+  "purpose": "歐洲客戶拜訪出差住宿",
+  "payment_method": "Credit Card",
+  "items": [
+    {
+      "name": "Standard Business Room (1 Night)",
+      "quantity": 1.0,
+      "unit_price": 145.0,
+      "amount": 145.0
+    }
+  ],
+  "confidence_score": 0.99
+}

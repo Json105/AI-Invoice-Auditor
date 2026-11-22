@@ -1,0 +1,11 @@
+{
+  "check-done-gate": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "../scripts/check-done.sh --hook",
+        "timeout": 60
+      }
+    ]
+  }
+}

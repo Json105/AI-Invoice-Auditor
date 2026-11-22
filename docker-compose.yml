@@ -1,0 +1,31 @@
+# ============================================================
+# AI-Invoice Auditor | Docker Compose Deployment
+# 專為 5-10 人小型公司打造之一鍵極簡部署 (One-Command Deployment)
+# ============================================================
+
+services:
+  invoice-auditor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_invoice_auditor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 綁定掛載主機目錄，確保資料庫與報表重啟不遺失，方便直接備份
+      - ./data:/app/data
+      - ./output:/app/output
+    environment:
+      # 選填：Gemini API Key（若未設定亦可直接使用內建離線 Mock 模式）
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # 選填：JWT 加密金鑰
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-ai-invoice-auditor-enterprise-secret-key-2026}
+      # 選填：資料庫連線字串（預設自動使用本地 SQLite WAL 模式）
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///data/invoices.db}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

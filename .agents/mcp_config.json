@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "google-stitch": {
+      "command": "python3",
+      "args": ["-m", "src.stitch.mcp_server"],
+      "env": {
+        "PYTHONPATH": "."
+      }
+    }
+  }
+}

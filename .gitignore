@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.swp
+*.swo
+.DS_Store
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Output files generated during runs
+output/
+data/*.db
+data/cache/
+data/uploads/
+
+# Internal Roadmap & Confidential Planning
+ROADMAP.md
+

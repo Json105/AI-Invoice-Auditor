@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI-Invoice Auditor | 智慧報銷平台</title>
+  <meta name="description" content="支援台灣統一發票、高鐵票、計程車及海外單據之多模態 AI 智慧核銷系統，自動套表至企業標準報銷清冊。" />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+  
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Navigation Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/><path d="M13 16h-5"/></svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">AI-Invoice Auditor <span class="badge-version">v1.2</span></div>
+          <div class="brand-subtitle">智慧報銷平台 · Enterprise Edition</div>
+        </div>
+      </div>
+      
+      <!-- Top Navigation Tabs -->
+      <div class="nav-tabs-wrapper">
+        <nav class="nav-tabs">
+          <button id="tab-audit-btn" class="nav-tab active" onclick="switchTab('audit')">
+            <span class="tab-icon">
+              <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </span> 單據辨識與稽核
+          </button>
+          <button id="tab-approval-btn" class="nav-tab" onclick="switchTab('approval')">
+            <span class="tab-icon">
+              <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            </span> 財務審批中心 <span id="nav-pending-badge" class="nav-badge-pill hidden">0</span>
+          </button>
+          <button id="tab-analytics-btn" class="nav-tab" onclick="switchTab('analytics')">
+            <span class="tab-icon">
+              <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </span> 系統用量分析
+          </button>
+          <button id="tab-history-btn" class="nav-tab" onclick="switchTab('history')">
+            <span class="tab-icon">
+              <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span> 歷史單據記錄
+          </button>
+        </nav>
+      </div>
+
+      <div class="header-status">
+        <div class="status-indicator" id="fx-status-indicator" title="台灣期交所/央行官方牌告即時匯率連線中">
+          <span class="status-dot green"></span>
+          <span id="fx-status-label" class="status-label">即時匯率已連線</span>
+        </div>
+        <div class="status-indicator">
+          <span class="status-dot blue"></span>
+          <span id="engine-badge-label" class="status-label">Mock 模式</span>
+        </div>
+
+        <!-- Enterprise User & RBAC Status -->
+        <div class="header-auth" id="header-auth">
+          <button id="btn-open-login" class="btn btn-secondary btn-sm" onclick="openLoginModal()">
+            <span>
+              <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              同仁登入
+            </span>
+          </button>
+          <div id="user-profile-badge" class="user-profile-pill hidden">
+            <span id="user-role-tag" class="user-role-badge">Admin</span>
+            <span id="user-name-display" class="user-name-text">系統管理員</span>
+            <button type="button" class="btn-change-pw" onclick="openChangePasswordModal()" title="修改個人密碼">改密碼</button>
+            <a id="link-admin-panel" href="/admin" target="_blank" class="btn-admin-link hidden" title="前往 SQLAdmin 企業管理後台">後台管理</a>
+            <button class="btn-logout" onclick="logoutUser()" title="登出系統">
+              <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- TAB 1: AUDIT & EXPORT -->
+      <section id="tab-audit" class="tab-pane active">
+        <div class="audit-workspace">
+          
+          <!-- 1. HERO INGESTION COMMAND CENTER (上傳核心居中放大) -->
+          <div class="hero-command-card">
+            
+            <!-- Collapsible Technical Settings (keeps employee UI clean while preserving all controls) -->
+            <details class="advanced-settings-panel">
+              <summary class="advanced-settings-summary">
+                <span>⚙️ 辨識引擎與匯出設定（預設自動套入公司公式 Excel）</span>
+              </summary>
+              <div class="command-toolbar">
+                <div class="toolbar-left">
+                  <div class="engine-badge-pill">
+                    <span class="engine-pill-icon">
+                      <svg class="ui-icon ui-icon-xs text-accent" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
+                    </span>
+                    <span class="engine-pill-label">AI 解析引擎：</span>
+                    <select id="engine-select" class="form-select-inline" onchange="onEngineChange()">
+                      <option value="gemini" selected>Gemini 3.7 Flash (雲端極速)</option>
+                      <option value="mock">離線展示模式 (免 API Key)</option>
+                    </select>
+                  </div>
+
+                  <div id="server-key-badge" class="server-key-badge hidden">
+                    <span><span class="status-dot green" style="display:inline-block; margin-right:4px;"></span> 伺服器金鑰已連線</span>
+                  </div>
+
+                  <div id="gemini-key-group" class="inline-key-input">
+                    <input type="password" id="api-key-input" class="form-input-sm" placeholder="輸入 Gemini API Key (選填)..." />
+                    <button type="button" class="btn-icon-sm" onclick="toggleKeyVisibility()" title="顯示/隱藏">
+                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="toolbar-right">
+                  <label class="checkbox-inline">
+                    <input type="checkbox" id="apply-template-cb" checked />
+                    <span class="checkbox-custom-sm"></span>
+                    <span class="text-sm">自動產出報銷表 (<strong class="text-accent">Excel</strong>)</span>
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <!-- Wide Hero Dropzone Target -->
+            <div id="dropzone" class="hero-dropzone" onclick="triggerFileInput()">
+              <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelect(event)" />
+              <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.pdf,.webp,.tiff,.tif,.bmp,.json" class="hidden" onchange="handleFileSelect(event)" />
+              <div class="hero-dropzone-content">
+                <div class="hero-drop-icon">
+                  <svg class="ui-icon ui-icon-xl" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+                </div>
+                <div class="hero-drop-title">點擊選擇檔案，或將發票照片、掃描檔、PDF 拖曳至此</div>
+                <div class="hero-drop-desc">
+                  支援手機拍照與電腦拖曳（JPG、PNG、WEBP、PDF、TIFF、BMP），自動解析金額與消費類別並套入公司公式 Excel
+                </div>
+                <div class="hero-drop-actions" onclick="event.stopPropagation()">
+                  <button type="button" class="btn btn-primary" onclick="triggerCameraInput(event)">
+                    <span>
+                      <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                      拍照 / 掃描單據
+                    </span>
+                  </button>
+                  <button type="button" class="btn btn-secondary" onclick="triggerFileInput(event)">
+                    <span>
+                      <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                      選擇檔案或相簿
+                    </span>
+                  </button>
+                  <button type="button" class="btn btn-sample-glow" onclick="loadSampleFixtures()" title="快速載入內建發票、高鐵票、計程車與海外單據範本">
+                    <span>
+                      <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+                      載入範例單據
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Queue & Run Audit Bar (When files are selected) -->
+            <div id="file-queue-container" class="file-queue-bar hidden">
+              <div class="queue-bar-header">
+                <div class="queue-info">
+                  <span class="queue-count-badge">待審核單據：<strong id="queue-count">0</strong> 份</span>
+                  <span class="queue-hint">確認無誤後即可開始審核</span>
+                </div>
+                <div class="queue-actions">
+                  <button class="btn btn-secondary btn-sm" onclick="clearQueue()">清空重選</button>
+                  <button id="btn-start-audit" class="btn btn-hero-primary" onclick="startAudit()" disabled>
+                    <span>
+                      <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                      開始智慧審核
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div id="file-queue-list" class="queue-chips-flow"></div>
+            </div>
+
+            <!-- Workflow Guide Strip (3 步驟流程條 + 4 大稽核標籤) -->
+            <div class="hero-guide-strip">
+              <!-- 3-Step Flow Stepper -->
+              <div class="guide-steps">
+                <div class="guide-step">
+                  <span class="step-num">1</span>
+                  <div class="step-meta">
+                    <span class="step-title">上傳單據</span>
+                    <span class="step-desc">發票、車票或收據</span>
+                  </div>
+                </div>
+                <div class="step-arrow">
+                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </div>
+                <div class="guide-step">
+                  <span class="step-num">2</span>
+                  <div class="step-meta">
+                    <span class="step-title">智慧稽核</span>
+                    <span class="step-desc">統編與稅額防呆</span>
+                  </div>
+                </div>
+                <div class="step-arrow">
+                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </div>
+                <div class="guide-step">
+                  <span class="step-num">3</span>
+                  <div class="step-meta">
+                    <span class="step-title">匯出報表</span>
+                    <span class="step-desc">產出標準 Excel</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4 Key Audit Guardrails Badges -->
+              <div class="guide-badges">
+                <span class="guide-badge" title="自動驗證財政部 8 碼乘數加權檢核碼">
+                  <span class="badge-icon">
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
+                  </span> 8 碼統編校驗
+                </span>
+                <span class="guide-badge" title="未稅金額 + 5% 營業稅 == 總金額 平準數學檢查">
+                  <span class="badge-icon">
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14"/><line x1="16" x2="16" y1="18"/><path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg>
+                  </span> 5% 稅額平準計算
+                </span>
+                <span class="guide-badge" title="跨月份歷史資料庫自動排重比對，防範重複報銷">
+                  <span class="badge-icon">
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                  </span> 跨月防重複請款
+                </span>
+                <span class="guide-badge" title="支援 USD, EUR, RMB, THB 等多國幣別自動折算">
+                  <span class="badge-icon">
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
+                  </span> 多幣別即時折算
+                </span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 2. AUDIT RESULTS & EXPORT WORKSPACE -->
+          <div class="results-workspace">
+            
+            <!-- Immediate Download Banner (Hero Result Banner) -->
+            <div id="download-banner" class="download-hero-banner hidden">
+              <div class="download-hero-text">
+                <div class="download-hero-title">
+                  <svg class="ui-icon ui-icon-md text-emerald" viewBox="0 0 24 24" style="color: #059669;"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                  稽核完成！企業標準出差報銷單已填妥
+                </div>
+                <div class="download-hero-desc">已自動完成金額加總、匯率折算與費用分類，可直接下載報銷。</div>
+              </div>
+              <div class="download-hero-actions">
+                <a id="btn-download-template" href="#" data-filename="Travel_Expenses_Report_Filled.xlsx" onclick="return handleProtectedDownload(event, this)" class="btn btn-emerald btn-lg">
+                  <span>
+                    <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    下載出差報銷單 (Excel)
+                  </span>
+                </a>
+                <a id="btn-download-excel" href="#" data-filename="expense_claim_report.xlsx" onclick="return handleProtectedDownload(event, this)" class="btn btn-secondary btn-sm">
+                  <span>
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
+                    通用 Excel
+                  </span>
+                </a>
+                <a id="btn-download-erp" href="#" data-filename="erp_journal_entry.csv" onclick="return handleProtectedDownload(event, this)" class="btn btn-secondary btn-sm" title="下載符合 SAP / NetSuite / 鼎新 ERP 之標準借貸平衡會計傳票分錄 (CSV)">
+                  <span>
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+                    ERP 傳票 (CSV)
+                  </span>
+                </a>
+                <a id="btn-download-json" href="#" data-filename="audit_trail.json" onclick="return handleProtectedDownload(event, this)" class="btn btn-secondary btn-sm">
+                  <span>
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>
+                    結構化 JSON
+                  </span>
+                </a>
+              </div>
+            </div>
+
+            <!-- KPI Summary Strip & Currency Tags -->
+            <div id="audit-stats-strip" class="audit-summary-strip hidden">
+              <div class="summary-kpis">
+                <div class="summary-pill gray">
+                  <span class="pill-label">單據總數</span>
+                  <span class="pill-val" id="stat-total">0</span>
+                </div>
+                <div class="summary-pill green">
+                  <span class="pill-label">合規通過</span>
+                  <span class="pill-val" id="stat-approved">0</span>
+                </div>
+                <div class="summary-pill amber">
+                  <span class="pill-label">警示需核</span>
+                  <span class="pill-val" id="stat-warning">0</span>
+                </div>
+                <div class="summary-pill red">
+                  <span class="pill-label">違規阻擋</span>
+                  <span class="pill-val" id="stat-rejected">0</span>
+                </div>
+              </div>
+
+              <!-- Currency Breakdown -->
+              <div id="currency-bar" class="summary-currencies hidden">
+                <span class="currency-strip-title">
+                  <svg class="ui-icon ui-icon-xs text-accent" viewBox="0 0 24 24"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
+                  幣別加總：
+                </span>
+                <div id="currency-badges" class="currency-badges"></div>
+              </div>
+            </div>
+
+            <!-- Table Card with Internal Scrolling -->
+            <div class="card table-card">
+              <div class="card-header-flex">
+                <div class="flex-align-center gap-2">
+                  <h2 class="card-title">
+                    <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" style="color: #2563EB;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    單據明細與稽核結果
+                  </h2>
+                </div>
+                <div class="table-legend">
+                  <span class="badge badge-t">T 交通</span>
+                  <span class="badge badge-f">F 餐飲</span>
+                  <span class="badge badge-h">H 住宿</span>
+                  <span class="badge badge-e">E 雜支</span>
+                </div>
+              </div>
+
+              <!-- Loading Indicator -->
+              <div id="audit-loading" class="loading-state hidden">
+                <div class="spinner"></div>
+                <div class="loading-title">正在進行 AI 單據解析與審核...</div>
+                <div class="loading-sub">系統正自動檢核統編、稅額計算與防重複比對</div>
+              </div>
+
+              <!-- Empty State -->
+              <div id="audit-empty" class="empty-state">
+                <div class="empty-icon">
+                  <svg class="ui-icon ui-icon-xl" viewBox="0 0 24 24" style="color: var(--text-subtle);"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/><path d="M13 16h-5"/></svg>
+                </div>
+                <div class="empty-title">尚未上傳任何單據</div>
+                <div class="empty-sub">請在上方拖曳發票圖檔或點擊「載入範例單據」立即體驗！</div>
+              </div>
+
+              <!-- Data Table Container (Self-contained scrollable viewport) -->
+              <div id="audit-table-wrapper" class="table-responsive-viewport hidden">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 105px;">狀態</th>
+                      <th style="width: 75px;">類別</th>
+                      <th>單據號碼 / 憑證</th>
+                      <th>開立日期</th>
+                      <th>原幣金額</th>
+                      <th>幣別</th>
+                      <th>事由 / 說明</th>
+                      <th>開立單位 / 商家</th>
+                      <th>稽核結果與說明</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-table-body"></tbody>
+                </table>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: FINANCIAL APPROVAL WORKSPACE (小團隊財務審批中心) -->
+      <section id="tab-approval" class="tab-pane">
+        <div class="approval-workspace">
+          <!-- Top Header & KPI Dashboard -->
+          <div class="approval-header-flex">
+            <div>
+              <div class="flex-align-center gap-2">
+                <h2 class="approval-main-title">
+                  <svg class="ui-icon ui-icon-sm text-accent" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  財務審批與撥款工作台 (Approval Center)
+                </h2>
+                <span class="badge-status badge-approved">● 審批流轉中</span>
+              </div>
+              <p class="approval-subtitle">
+                專為 5-10 人小型公司打造之極簡三步驟審批閉環：送審 ➔ 主管/財務覆核 ➔ 出納撥款結案
+              </p>
+            </div>
+            <div class="approval-top-actions">
+              <button class="btn btn-secondary btn-sm" onclick="loadApprovalData()">
+                <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                重新整理資料
+              </button>
+            </div>
+          </div>
+
+          <!-- 4 Approval KPI Summary Cards -->
+          <div class="approval-stats-grid">
+            <div class="appr-stat-card blue" onclick="setApprovalFilter('SUBMITTED')">
+              <div class="appr-stat-header">
+                <span class="appr-stat-label">待主管/財務審核</span>
+                <span class="appr-stat-icon blue">
+                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+              </div>
+              <div class="appr-stat-body">
+                <span class="appr-stat-count" id="appr-kpi-submitted-count">0</span>
+                <span class="appr-stat-unit">筆</span>
+              </div>
+              <div class="appr-stat-footer">
+                <span>折合 NT$ <strong id="appr-kpi-submitted-amt">0</strong></span>
+              </div>
+            </div>
+
+            <div class="appr-stat-card emerald" onclick="setApprovalFilter('APPROVED')">
+              <div class="appr-stat-header">
+                <span class="appr-stat-label">已核准 · 待撥款</span>
+                <span class="appr-stat-icon emerald">
+                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </span>
+              </div>
+              <div class="appr-stat-body">
+                <span class="appr-stat-count" id="appr-kpi-approved-count">0</span>
+                <span class="appr-stat-unit">筆</span>
+              </div>
+              <div class="appr-stat-footer">
+                <span>待匯款 NT$ <strong id="appr-kpi-approved-amt">0</strong></span>
+              </div>
+            </div>
+
+            <div class="appr-stat-card amber" onclick="setApprovalFilter('RETURNED')">
+              <div class="appr-stat-header">
+                <span class="appr-stat-label">退件 · 待同仁補件</span>
+                <span class="appr-stat-icon amber">
+                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </span>
+              </div>
+              <div class="appr-stat-body">
+                <span class="appr-stat-count" id="appr-kpi-returned-count">0</span>
+                <span class="appr-stat-unit">筆</span>
+              </div>
+              <div class="appr-stat-footer">
+                <span>退件附具體備註</span>
+              </div>
+            </div>
+
+            <div class="appr-stat-card purple" onclick="setApprovalFilter('PAID')">
+              <div class="appr-stat-header">
+                <span class="appr-stat-label">已完成撥款結案</span>
+                <span class="appr-stat-icon purple">
+                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                </span>
+              </div>
+              <div class="appr-stat-body">
+                <span class="appr-stat-count" id="appr-kpi-paid-count">0</span>
+                <span class="appr-stat-unit">筆</span>
+              </div>
+              <div class="appr-stat-footer">
+                <span>累計已撥 NT$ <strong id="appr-kpi-paid-amt">0</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter Toolbar & Table Card -->
+          <div class="card table-card">
+            <div class="card-header-flex">
+              <div class="approval-filter-pills">
+                <button id="appr-filter-all" class="filter-pill active" onclick="setApprovalFilter('ALL')">全部單據</button>
+                <button id="appr-filter-submitted" class="filter-pill" onclick="setApprovalFilter('SUBMITTED')">待審核</button>
+                <button id="appr-filter-approved" class="filter-pill" onclick="setApprovalFilter('APPROVED')">待撥款</button>
+                <button id="appr-filter-returned" class="filter-pill" onclick="setApprovalFilter('RETURNED')">退件需補件</button>
+                <button id="appr-filter-paid" class="filter-pill" onclick="setApprovalFilter('PAID')">已撥款結案</button>
+              </div>
+              <div class="table-legend">
+                <span class="text-sm text-subtle" id="appr-table-count-label">共 0 筆單據</span>
+              </div>
+            </div>
+
+            <!-- Approval Table Viewport -->
+            <div class="table-responsive-viewport">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 50px;">序號</th>
+                    <th style="width: 105px;">審批狀態</th>
+                    <th style="width: 90px;">AI 稽核</th>
+                    <th style="width: 110px;">申請人</th>
+                    <th style="width: 130px;">單據號碼 / 類型</th>
+                    <th>開立廠商 / 事由</th>
+                    <th style="width: 110px;">報銷金額</th>
+                    <th>審核備註 / 退件原因</th>
+                    <th style="width: 160px; text-align: center;">審批操作</th>
+                  </tr>
+                </thead>
+                <tbody id="approval-table-body">
+                  <tr>
+                    <td colspan="9" class="text-center">載入審批資料中...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: GOOGLE STITCH ANALYTICS & USAGE -->
+      <section id="tab-analytics" class="tab-pane">
+        <div class="analytics-container">
+          <!-- Top Header & Action Controls -->
+          <div class="analytics-header">
+            <div>
+              <div class="flex-align-center gap-2">
+                <h2 class="analytics-main-title">
+                  <svg class="ui-icon ui-icon-sm text-accent" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+                  系統用量與審計效能分析
+                </h2>
+                <span class="badge-status badge-approved">● 運行正常</span>
+              </div>
+              <p class="analytics-subtitle">
+                即時統計單據處理量、報銷總額及模型辨識效能數據
+              </p>
+            </div>
+            <div class="analytics-actions">
+              <button id="btn-toggle-skeleton" class="btn btn-secondary btn-sm" onclick="toggleSkeletonView()">
+                <span>
+                  <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+                <span id="skeleton-btn-text">切換載入效果</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- SKELETON VIEW (HIDDEN BY DEFAULT) -->
+          <div id="analytics-skeleton-view" class="analytics-skeleton-grid hidden">
+            <div class="skeleton-card"><div class="skeleton-shimmer"></div></div>
+            <div class="skeleton-card"><div class="skeleton-shimmer"></div></div>
+            <div class="skeleton-card"><div class="skeleton-shimmer"></div></div>
+            <div class="skeleton-card"><div class="skeleton-shimmer"></div></div>
+            <div class="skeleton-chart-box"><div class="skeleton-shimmer"></div></div>
+          </div>
+
+          <!-- NORMAL METRICS & CHART VIEW -->
+          <div id="analytics-live-view" class="analytics-content-stack">
+            <!-- 4 Metric Cards Grid -->
+            <div class="stitch-cards-grid">
+              <!-- Card 1: Total Docs -->
+              <div class="stitch-card group-blue">
+                <div class="stitch-card-top">
+                  <span class="stitch-card-title">本月累積處理單據</span>
+                  <div class="stitch-icon-box blue">
+                    <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  </div>
+                </div>
+                <div class="stitch-card-value">
+                  <span id="counter-docs" class="count-up tabular-nums">2,845</span>
+                  <span class="stitch-unit">份</span>
+                </div>
+                <div class="stitch-progress-wrapper">
+                  <div class="stitch-progress-info">
+                    <span>使用進度</span>
+                    <span class="tabular-nums text-emphasis">85.2%</span>
+                  </div>
+                  <div class="stitch-progress-track">
+                    <div class="stitch-progress-bar blue" style="width: 85.2%;"></div>
+                  </div>
+                  <div class="stitch-progress-hint">額度消耗 2,845 / 3,000 份</div>
+                </div>
+                <div class="stitch-card-footer">
+                  <span class="stitch-trend-badge blue">↑ +18.4%</span>
+                  <span class="stitch-trend-label">較上月同期大幅提升</span>
+                </div>
+              </div>
+
+              <!-- Card 2: Expense Volume -->
+              <div class="stitch-card group-emerald">
+                <div class="stitch-card-top">
+                  <span class="stitch-card-title">本月累計報銷折合</span>
+                  <div class="stitch-icon-box emerald">
+                    <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                  </div>
+                </div>
+                <div class="stitch-card-value">
+                  <span class="stitch-prefix">NT$ </span>
+                  <span id="counter-amount" class="count-up tabular-nums">842,500</span>
+                </div>
+                <div class="stitch-progress-wrapper">
+                  <div class="stitch-progress-info">
+                    <span>年度出差預算</span>
+                    <span class="tabular-nums text-emphasis">64.8%</span>
+                  </div>
+                  <div class="stitch-progress-track">
+                    <div class="stitch-progress-bar emerald" style="width: 64.8%;"></div>
+                  </div>
+                  <div class="stitch-progress-hint">含各國外幣匯率折算</div>
+                </div>
+                <div class="stitch-card-footer">
+                  <span class="stitch-trend-badge emerald">↑ +9.2%</span>
+                  <span class="stitch-trend-label">含外幣即時匯率換算</span>
+                </div>
+              </div>
+
+              <!-- Card 3: Model Latency -->
+              <div class="stitch-card group-indigo">
+                <div class="stitch-card-top">
+                  <span class="stitch-card-title">AI 辨識平均延遲</span>
+                  <div class="stitch-icon-box indigo">
+                    <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  </div>
+                </div>
+                <div class="stitch-card-value">
+                  <span id="counter-latency" class="count-up tabular-nums">1.38</span>
+                  <span class="stitch-unit">秒</span>
+                </div>
+                <div class="stitch-progress-wrapper">
+                  <div class="stitch-progress-info">
+                    <span>推論響應基準</span>
+                    <span class="tabular-nums text-emphasis">92.0%</span>
+                  </div>
+                  <div class="stitch-progress-track">
+                    <div class="stitch-progress-bar indigo" style="width: 92%;"></div>
+                  </div>
+                  <div class="stitch-progress-hint">AI 毫秒級極速辨識</div>
+                </div>
+                <div class="stitch-card-footer">
+                  <span class="stitch-trend-badge indigo">↓ -24.5%</span>
+                  <span class="stitch-trend-label">較傳統人工審單提速 85x</span>
+                </div>
+              </div>
+
+              <!-- Card 4: Compliance Pass Rate -->
+              <div class="stitch-card group-amber">
+                <div class="stitch-card-top">
+                  <span class="stitch-card-title">會計法規合規率</span>
+                  <div class="stitch-icon-box amber">
+                    <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                  </div>
+                </div>
+                <div class="stitch-card-value">
+                  <span id="counter-rate" class="count-up tabular-nums">99.8</span>
+                  <span class="stitch-unit">%</span>
+                </div>
+                <div class="stitch-progress-wrapper">
+                  <div class="stitch-progress-info">
+                    <span>合規達標率</span>
+                    <span class="tabular-nums text-emphasis">99.8%</span>
+                  </div>
+                  <div class="stitch-progress-track">
+                    <div class="stitch-progress-bar amber" style="width: 99.8%;"></div>
+                  </div>
+                  <div class="stitch-progress-hint">統編邏輯與稅額計算防呆</div>
+                </div>
+                <div class="stitch-card-footer">
+                  <span class="stitch-trend-badge amber">↑ +0.4%</span>
+                  <span class="stitch-trend-label">稅額零誤差</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recharts-Style Native Interactive Chart -->
+            <div class="stitch-chart-card">
+              <div class="stitch-chart-header">
+                <div>
+                  <div class="flex-align-center gap-2">
+                    <h3 class="stitch-chart-title">系統用量趨勢分析</h3>
+                    <span class="stitch-trend-badge blue">
+                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                      即時統計
+                    </span>
+                  </div>
+                  <p id="chart-sub-label" class="stitch-chart-desc">
+                    區間累計處理 <strong class="text-emphasis tabular-nums" id="chart-total-count">2,845</strong> 份單據，包含統一發票、車票與海外差旅收據
+                  </p>
+                </div>
+                <div class="chart-range-switcher">
+                  <button id="range-btn-7d" class="range-btn active" onclick="setChartRange('7D')">近 7 天</button>
+                  <button id="range-btn-30d" class="range-btn" onclick="setChartRange('30D')">近 30 天</button>
+                  <button id="range-btn-90d" class="range-btn" onclick="setChartRange('90D')">近 3 季</button>
+                </div>
+              </div>
+
+              <!-- Canvas Container -->
+              <div class="chart-canvas-wrapper">
+                <canvas id="trendChartCanvas" height="250"></canvas>
+                <!-- Floating Glassmorphic Tooltip -->
+                <div id="chart-custom-tooltip" class="stitch-glass-tooltip hidden"></div>
+              </div>
+            </div>
+
+            <!-- Document Category Breakdown -->
+            <div class="stitch-category-grid">
+              <div class="stitch-sub-card">
+                <div class="stitch-sub-card-header">
+                  <div class="stitch-sub-label">
+                    <span class="sub-icon blue">
+                      <svg class="ui-icon ui-icon-xs text-accent" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/></svg>
+                    </span> 台灣統一發票 (二/三聯/電子)
+                  </div>
+                  <span class="stitch-sub-val">1,650 份 (58%)</span>
+                </div>
+                <div class="sub-progress-track">
+                  <div class="sub-progress-bar blue" style="width: 58%;"></div>
+                </div>
+              </div>
+
+              <div class="stitch-sub-card">
+                <div class="stitch-sub-card-header">
+                  <div class="stitch-sub-label">
+                    <span class="sub-icon emerald">
+                      <svg class="ui-icon ui-icon-xs text-emerald" viewBox="0 0 24 24" style="color: #059669;"><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M12 3v8"/><path d="m8 19-2 3"/><path d="m18 22-2-3"/><circle cx="8" cy="15" r="1"/><circle cx="16" cy="15" r="1"/></svg>
+                    </span> 高鐵 (THSR) 與計程車
+                  </div>
+                  <span class="stitch-sub-val">796 份 (28%)</span>
+                </div>
+                <div class="sub-progress-track">
+                  <div class="sub-progress-bar emerald" style="width: 28%;"></div>
+                </div>
+              </div>
+
+              <div class="stitch-sub-card">
+                <div class="stitch-sub-card-header">
+                  <div class="stitch-sub-label">
+                    <span class="sub-icon indigo">
+                      <svg class="ui-icon ui-icon-xs text-indigo" viewBox="0 0 24 24" style="color: #4F46E5;"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+                    </span> 海外差旅憑證
+                  </div>
+                  <span class="stitch-sub-val">399 份 (14%)</span>
+                </div>
+                <div class="sub-progress-track">
+                  <div class="sub-progress-bar indigo" style="width: 14%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Storage & Retention Lifecycle Card -->
+            <div class="card storage-lifecycle-card" style="margin-top: 1.25rem;">
+              <div class="card-header-flex">
+                <div class="flex-align-center gap-2">
+                  <h3 class="card-title" style="font-size: 1rem;">
+                    <svg class="ui-icon ui-icon-sm text-accent" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
+                    磁碟儲存容量與 TTL 生命週期管理 (面向四)
+                  </h3>
+                  <span id="storage-provider-badge" class="badge-status badge-approved" style="font-size: 0.7rem;">LocalStorage (Docker Volume)</span>
+                </div>
+                <div class="flex-align-center gap-2">
+                  <button class="btn btn-secondary btn-sm" onclick="triggerStorageCleanup()" title="清理超過 72 小時未送審或過期暫存檔">
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    一鍵清理過期暫存檔
+                  </button>
+                  <button class="btn btn-secondary btn-sm" onclick="loadStorageStats()">
+                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                    更新容量
+                  </button>
+                </div>
+              </div>
+              
+              <div class="storage-stats-row">
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">系統總儲存佔用</span>
+                  <span class="storage-kpi-val"><strong id="storage-stat-total-mb">0.0</strong> MB</span>
+                </div>
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">暫存工作階段 (Sessions)</span>
+                  <span class="storage-kpi-val"><strong id="storage-stat-sessions-count">0</strong> 個目錄</span>
+                </div>
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">單據與報表檔案數</span>
+                  <span class="storage-kpi-val"><strong id="storage-stat-files-count">0</strong> 份</span>
+                </div>
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">SQLite 資料庫大小</span>
+                  <span class="storage-kpi-val"><strong id="storage-stat-db-mb">0.0</strong> MB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: HISTORICAL DATABASE & DEDUPLICATION -->
+      <section id="tab-history" class="tab-pane">
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">
+                <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                歷史審計與防重複資料庫
+              </h2>
+              <div class="card-subtitle">所有經系統核銷之單據皆自動存檔，自動防止跨月重複請款或虛報。</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadHistory()">
+              <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+              重新整理資料
+            </button>
+          </div>
+
+          <!-- History Summary Cards -->
+          <div class="stats-grid history-stats">
+            <div class="stat-card">
+              <div class="stat-icon blue">
+                <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="hist-total">0</div>
+                <div class="stat-label">資料庫累計發票總數</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon green">
+                <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value text-green" id="hist-approved-rate">100%</div>
+                <div class="stat-label">歷史合規率</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon amber">
+                <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value text-amber" id="hist-currencies-count">0</div>
+                <div class="stat-label">涵蓋幣別種類</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- History Filters & Excel Export Bar -->
+          <div class="history-filter-bar">
+            <div class="history-filter-controls">
+              <select id="history-filter-user" class="form-select-inline hidden" onchange="loadHistory()" title="依同仁篩選">
+                <option value="">全部同仁</option>
+              </select>
+              <select id="history-filter-status" class="form-select-inline" onchange="loadHistory()" title="依審核狀態篩選">
+                <option value="">全部狀態</option>
+                <option value="APPROVED">合規 APPROVED</option>
+                <option value="WARNING">警示 WARNING</option>
+                <option value="REJECTED">違規 REJECTED</option>
+              </select>
+              <input type="date" id="history-filter-from" class="form-input-sm" onchange="loadHistory()" title="起始日期" />
+              <span class="filter-sep">～</span>
+              <input type="date" id="history-filter-to" class="form-input-sm" onchange="loadHistory()" title="結束日期" />
+            </div>
+            <button type="button" class="btn btn-emerald btn-sm" onclick="exportFilteredHistoryExcel()">
+              匯出篩選 Excel
+            </button>
+          </div>
+
+          <!-- History Table Viewport (Self-contained scrollable viewport with sticky header) -->
+          <div class="table-responsive-viewport">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 55px;">ID</th>
+                  <th style="width: 100px;">狀態</th>
+                  <th style="width: 140px;">發票/單據號碼</th>
+                  <th style="width: 105px;">單據日期</th>
+                  <th style="width: 110px;">原幣金額</th>
+                  <th style="width: 75px;">幣別</th>
+                  <th style="width: 70px;">類別</th>
+                  <th>開立商家</th>
+                  <th>出差用途</th>
+                  <th style="width: 100px;">上傳同仁</th>
+                  <th style="width: 90px;">原圖/明細</th>
+                  <th style="width: 150px;">審核時間</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                <tr>
+                  <td colspan="12" class="text-center">載入歷史紀錄中...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div>AI-Invoice Auditor © 2026 Enterprise Edition · 企業智慧報銷平台</div>
+      <div class="footer-links">
+        <span>技術核心：Gemini 3.7 Flash + Ollama + Pydantic v2 + SQLite + SQLAdmin</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Enterprise Auth Modal -->
+  <div id="auth-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title">
+          <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          企業帳號登入 (Enterprise Auth)
+        </div>
+        <button class="auth-modal-close" onclick="closeLoginModal()">&times;</button>
+      </div>
+
+      <div class="auth-modal-body">
+        <div class="quick-login-banner">
+          <div class="quick-login-label">⚡ 快速切換示範身份：</div>
+          <div class="quick-login-buttons">
+            <button type="button" class="btn-quick-pill admin" onclick="quickFillLogin('admin')">👑 管理員</button>
+            <button type="button" class="btn-quick-pill finance" onclick="quickFillLogin('finance')">💼 財務主管</button>
+            <button type="button" class="btn-quick-pill employee" onclick="quickFillLogin('employee')">👤 一般同仁</button>
+          </div>
+        </div>
+
+        <form id="login-form" onsubmit="handleLoginSubmit(event)">
+          <div class="form-group">
+            <label class="form-label" for="login-email">公司電子郵件 (Work Email)</label>
+            <input type="email" id="login-email" class="form-input" placeholder="name@company.local" required />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="login-password">密碼 (Password)</label>
+            <input type="password" id="login-password" class="form-input" placeholder="••••••••" required />
+          </div>
+
+          <div id="login-error-msg" class="login-error-msg hidden"></div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeLoginModal()">取消</button>
+            <button type="submit" id="btn-login-submit" class="btn btn-hero-primary">
+              <span>登入系統</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="auth-sso-footer">
+          <span class="sso-hint">預留 OAuth2 / SSO 擴展接口（可隨插即用 Microsoft Azure AD / Google Workspace）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review / Return / Reject Action Modal -->
+  <div id="review-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card review-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title">
+          <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          單據審核與覆核作業
+        </div>
+        <button class="auth-modal-close" onclick="closeReviewModal()">&times;</button>
+      </div>
+
+      <div class="auth-modal-body">
+        <!-- Target Record Summary -->
+        <div class="review-target-summary" id="review-target-summary"></div>
+
+        <form id="review-form" onsubmit="handleReviewSubmit(event)">
+          <input type="hidden" id="review-record-id" />
+          
+          <div class="form-group">
+            <label class="form-label">選擇審核判定 (Decision)</label>
+            <div class="review-action-radios">
+              <label class="radio-card approve-card">
+                <input type="radio" name="review_action" value="approve" checked onchange="onReviewActionChange()" />
+                <div class="radio-card-content">
+                  <div class="radio-title text-emerald">🟢 核准通過 (Approve)</div>
+                  <div class="radio-desc">單據合規無誤，核准並送交出納安排撥款</div>
+                </div>
+              </label>
+              <label class="radio-card return-card">
+                <input type="radio" name="review_action" value="return" onchange="onReviewActionChange()" />
+                <div class="radio-card-content">
+                  <div class="radio-title text-amber">🟠 退件補件 (Return)</div>
+                  <div class="radio-desc">單據資訊不齊或缺漏證明，請申請人修正後重送</div>
+                </div>
+              </label>
+              <label class="radio-card reject-card">
+                <input type="radio" name="review_action" value="reject" onchange="onReviewActionChange()" />
+                <div class="radio-card-content">
+                  <div class="radio-title text-rose">🔴 駁回不付 (Reject)</div>
+                  <div class="radio-desc">非公務支出或重大違規，不予報銷核銷</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Quick Return Reason Presets (visible when return is selected) -->
+          <div id="quick-return-presets" class="form-group hidden">
+            <label class="form-label">⚡ 快速帶入常用退件理由：</label>
+            <div class="quick-preset-chips">
+              <button type="button" class="btn-preset-chip" onclick="applyPresetReason('請補附高鐵/計程車購票與乘車證明')">🚄 缺車票證明</button>
+              <button type="button" class="btn-preset-chip" onclick="applyPresetReason('無公司抬頭統一編號，請向店家換開發票')">🏢 缺公司統編</button>
+              <button type="button" class="btn-preset-chip" onclick="applyPresetReason('非公務差旅核銷範圍，請同仁自行吸收')">❌ 非公務支出</button>
+              <button type="button" class="btn-preset-chip" onclick="applyPresetReason('未稅與含稅金額計算不符，請核對後重送')">📐 金額計算有誤</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="review-notes">審核意見與備註說明 <span id="review-notes-required" class="text-rose text-xs hidden">* 退件時必填</span></label>
+            <textarea id="review-notes" class="form-textarea" rows="3" placeholder="請填寫審核意見或退件理由..."></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeReviewModal()">取消</button>
+            <button type="submit" id="btn-submit-review" class="btn btn-hero-primary">
+              <span>確認送出審核結果</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Secure Invoice & Receipt Preview Modal -->
+  <div id="invoice-preview-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card preview-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title">
+          <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span id="preview-modal-title">原始單據憑證安全預覽</span>
+        </div>
+        <button class="auth-modal-close" onclick="closeInvoicePreview()">&times;</button>
+      </div>
+
+      <div class="auth-modal-body">
+        <div class="preview-security-badge">
+          <span>🔒 15 分鐘時效安全預簽署連結 (HMAC-SHA256 加密防外洩)</span>
+        </div>
+
+        <div id="preview-media-container" class="preview-media-box">
+          <div class="spinner" style="margin: 3rem auto;"></div>
+        </div>
+
+        <div class="form-actions" style="justify-content: space-between; align-items: center; margin-top: 1rem;">
+          <span id="preview-meta-filename" class="text-xs text-subtle"></span>
+          <div class="flex-align-center gap-2">
+            <a id="btn-preview-download-raw" href="#" download class="btn btn-secondary btn-sm">
+              <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              下載原檔
+            </a>
+            <button type="button" class="btn btn-hero-primary btn-sm" onclick="closeInvoicePreview()">關閉預覽</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div id="change-password-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title">修改個人登入密碼</div>
+        <button class="auth-modal-close" onclick="closeChangePasswordModal()">&times;</button>
+      </div>
+      <div class="auth-modal-body">
+        <form id="change-password-form" onsubmit="handleChangePasswordSubmit(event)">
+          <div class="form-group">
+            <label class="form-label" for="cp-current-password">目前密碼</label>
+            <input type="password" id="cp-current-password" class="form-input" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cp-new-password">新密碼（至少 6 碼）</label>
+            <input type="password" id="cp-new-password" class="form-input" minlength="6" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cp-confirm-password">確認新密碼</label>
+            <input type="password" id="cp-confirm-password" class="form-input" minlength="6" required />
+          </div>
+          <div id="cp-error-msg" class="login-error-msg hidden"></div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()">取消</button>
+            <button type="submit" id="btn-cp-submit" class="btn btn-hero-primary">儲存新密碼</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stored Receipt Preview Modal -->
+  <div id="receipt-preview-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card receipt-preview-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title" id="receipt-preview-title">憑證原圖預覽</div>
+        <button class="auth-modal-close" onclick="closeReceiptPreviewModal()">&times;</button>
+      </div>
+      <div class="auth-modal-body">
+        <div id="receipt-preview-viewport" class="receipt-preview-viewport">
+          <div class="text-center">載入憑證中...</div>
+        </div>
+        <div class="form-actions">
+          <a id="btn-download-original-receipt" href="#" class="btn btn-secondary btn-sm" download>下載原始檔案</a>
+          <button type="button" class="btn btn-hero-primary btn-sm" onclick="closeReceiptPreviewModal()">關閉</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

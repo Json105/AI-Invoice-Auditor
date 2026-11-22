@@ -1,0 +1,33 @@
+{
+  "document_type": "thsr_ticket",
+  "invoice_number": "THSR-20260902-9918",
+  "invoice_date": "2026-09-02",
+  "buyer_tax_id": "22099131",
+  "buyer_name": "台灣積體電路製造股份有限公司",
+  "seller_tax_id": "16446274",
+  "seller_name": "台灣高速鐵路股份有限公司",
+  "currency": "TWD",
+  "subtotal": 1419.0,
+  "tax_amount": 71.0,
+  "tax_rate": 0.05,
+  "total_amount": 1490.0,
+  "items": [
+    {
+      "name": "高鐵標準車廂單程票",
+      "quantity": 1.0,
+      "unit_price": 1490.0,
+      "amount": 1490.0
+    }
+  ],
+  "travel_details": {
+    "departure": "台北",
+    "destination": "左營",
+    "train_or_flight_no": "0609",
+    "seat_info": "03車11A",
+    "travel_date": "2026-09-02",
+    "start_time": "08:15",
+    "end_time": "10:05"
+  },
+  "notes": "業務公出高雄廠參訪",
+  "confidence_score": 0.98
+}

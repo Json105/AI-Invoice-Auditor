@@ -1,0 +1,33 @@
+{
+  "document_type": "taxi_receipt",
+  "invoice_number": "TX-99881122",
+  "invoice_date": "2026-09-02",
+  "buyer_tax_id": null,
+  "seller_tax_id": null,
+  "seller_name": "台灣大車隊 55688",
+  "currency": "TWD",
+  "subtotal": 350.0,
+  "tax_amount": 0.0,
+  "tax_rate": 0.0,
+  "total_amount": 350.0,
+  "items": [
+    {
+      "name": "計程車計費乘車資費",
+      "quantity": 1.0,
+      "unit_price": 350.0,
+      "amount": 350.0
+    }
+  ],
+  "travel_details": {
+    "departure": "台北車站",
+    "destination": "內湖科技園區",
+    "vehicle_number": "TDC-8821",
+    "driver_name": "林運轉",
+    "travel_date": "2026-09-02",
+    "start_time": "14:20",
+    "end_time": "14:50",
+    "mileage_km": 9.8
+  },
+  "notes": "業務洽公拜訪客戶車資",
+  "confidence_score": 0.95
+}
