@@ -601,6 +601,10 @@ function onEngineChange() {
     if (keyGroup) keyGroup.classList.remove('hidden');
     if (engineHint) engineHint.textContent = '採用 Google 雲端多模態視覺模型，辨識速度 1~2 秒，跨國多幣別理解力最強。';
     if (badgeLabel) badgeLabel.textContent = 'Gemini 3.7 Flash 雲端';
+  } else if (engine === 'ollama') {
+    if (keyGroup) keyGroup.classList.add('hidden');
+    if (engineHint) engineHint.textContent = '連線本機 Ollama 視覺模型 (llama3.2-vision)，單據完全不出企業內網。';
+    if (badgeLabel) badgeLabel.textContent = 'Ollama 地端離線';
   } else {
     if (keyGroup) keyGroup.classList.add('hidden');
     if (engineHint) engineHint.textContent = '無需 API Key，支援示範中國發票、泰國 Grab、歐洲飯店與高鐵票。';
