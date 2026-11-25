@@ -3,11 +3,11 @@
 import json
 import base64
 from pathlib import Path
-from typing import Union, Optional
+from typing import List, Optional, Union
 import requests
 
-from .base import BaseInvoiceExtractor, prepare_document_payload
-from .gemini_extractor import EXTRACTION_SYSTEM_PROMPT
+from .base import BaseInvoiceExtractor, clean_json_text, parse_invoices_payload, prepare_document_payload
+from .gemini_extractor import EXTRACTION_SYSTEM_PROMPT, MULTI_RECEIPT_INSTRUCTION
 from ..models import InvoiceData
 
 
@@ -25,8 +25,7 @@ class OllamaExtractor(BaseInvoiceExtractor):
         self.base_url = base_url.rstrip("/")
         self.model = model
 
-    def extract(self, file_path: Union[str, Path]) -> InvoiceData:
-        """Extract structured invoice data using local Ollama model."""
+    def _call_ollama(self, file_path: Union[str, Path], prompt_text: str) -> str:
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -34,15 +33,10 @@ class OllamaExtractor(BaseInvoiceExtractor):
         raw_bytes, _ = prepare_document_payload(path)
         encoded_image = base64.b64encode(raw_bytes).decode("utf-8")
 
-        prompt = (
-            f"{EXTRACTION_SYSTEM_PROMPT}\n\n"
-            "Analyze this document image and return ONLY the required JSON object."
-        )
-
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model,
-            "prompt": prompt,
+            "prompt": prompt_text,
             "images": [encoded_image],
             "stream": False,
             "format": "json",
@@ -63,14 +57,21 @@ class OllamaExtractor(BaseInvoiceExtractor):
             raise RuntimeError(f"Ollama error ({response.status_code}): {response.text}")
 
         res_json = response.json()
-        raw_output = res_json.get("response", "").strip()
+        return clean_json_text(res_json.get("response", ""))
 
-        # Clean JSON markdown if model wrapped it
-        if raw_output.startswith("```json"):
-            raw_output = raw_output[7:]
-        if raw_output.endswith("```"):
-            raw_output = raw_output[:-3]
-        raw_output = raw_output.strip()
+    def extract(self, file_path: Union[str, Path]) -> InvoiceData:
+        """Extract structured invoice data using local Ollama model."""
+        prompt = (
+            f"{EXTRACTION_SYSTEM_PROMPT}\n\n"
+            "Analyze this document image and return ONLY the required JSON object."
+        )
+        raw_output = self._call_ollama(file_path, prompt)
+        return InvoiceData.model_validate(json.loads(raw_output))
 
-        data_dict = json.loads(raw_output)
-        return InvoiceData.model_validate(data_dict)
+    def extract_many(self, file_path: Union[str, Path], multi_receipt: bool = False) -> List[InvoiceData]:
+        """Extract one or multiple receipts arranged on one image via Ollama."""
+        if not multi_receipt:
+            return [self.extract(file_path)]
+        prompt = f"{EXTRACTION_SYSTEM_PROMPT}\n\n{MULTI_RECEIPT_INSTRUCTION}"
+        raw_output = self._call_ollama(file_path, prompt)
+        return parse_invoices_payload(raw_output)

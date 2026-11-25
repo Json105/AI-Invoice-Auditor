@@ -10,9 +10,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install curl for container health check
+# Install curl, poppler-utils (PDF splitting), and zbar-tools (TW e-invoice QR decode)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    poppler-utils \
+    zbar-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency requirements first for Docker layer caching

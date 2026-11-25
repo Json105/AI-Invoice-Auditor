@@ -18,6 +18,7 @@ output/
 data/*.db
 data/cache/
 data/uploads/
+data/watch_inbox/
 
 # Internal Roadmap & Confidential Planning
 ROADMAP.md

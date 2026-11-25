@@ -55,10 +55,19 @@ class ERPExporter:
         for report in self.reports:
             inv = report.data
 
-            # Calculate NTD amount with live FX conversion
+            # Calculate NTD amount using explicit/dated per-receipt rate or live FX fallback
             original_amount = float(inv.total_amount)
             currency = inv.currency or "NT$"
-            converted_total_ntd, fx_rate = fx_service.convert_to_ntd(original_amount, currency)
+            explicit_rate = getattr(inv, "exchange_rate", None)
+            if explicit_rate and float(explicit_rate) > 0:
+                fx_rate = float(explicit_rate)
+                converted_total_ntd = round(original_amount * fx_rate, 2)
+            else:
+                converted_total_ntd, fx_rate = fx_service.convert_to_ntd(
+                    original_amount,
+                    currency,
+                    target_date=inv.invoice_date,
+                )
 
             # Determine expense category
             from .template_exporter import infer_expense_category
@@ -72,7 +81,7 @@ class ERPExporter:
             net_expense_ntd = converted_total_ntd
 
             if inv.document_type == DocumentType.TW_INVOICE and (inv.tax_amount or 0) > 0:
-                tax_amount_ntd, _ = fx_service.convert_to_ntd(float(inv.tax_amount), currency)
+                tax_amount_ntd, _ = fx_service.convert_to_ntd(float(inv.tax_amount), currency, custom_rate=fx_rate)
                 net_expense_ntd = round(converted_total_ntd - tax_amount_ntd, 2)
 
             # 1. DEBIT: Expense Line (借：費用科目)

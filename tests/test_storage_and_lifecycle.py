@@ -9,6 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from src.web.app import app
+from src.database import init_db, DEFAULT_DB_PATH
 from src.services.storage_service import (
     storage_service,
     LocalStorageProvider,
@@ -16,6 +17,16 @@ from src.services.storage_service import (
 )
 
 client = TestClient(app)
+
+
+def _login_admin_headers() -> dict:
+    init_db(DEFAULT_DB_PATH)
+    res = client.post(
+        "/api/auth/login",
+        json={"email": "admin@company.local", "password": "Admin1234!"},
+    )
+    assert res.status_code == 200
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
 def test_presigned_token_generation_and_validation():
@@ -71,8 +82,10 @@ def test_web_api_preview_endpoint():
 
 def test_storage_stats_and_ttl_cleanup(tmp_path):
     """4. Test /api/storage/stats and /api/storage/cleanup TTL retention policy."""
+    headers = _login_admin_headers()
+
     # Test stats endpoint
-    res_stats = client.get("/api/storage/stats")
+    res_stats = client.get("/api/storage/stats", headers=headers)
     assert res_stats.status_code == 200
     stats = res_stats.json()
     assert "total_bytes" in stats
@@ -92,7 +105,7 @@ def test_storage_stats_and_ttl_cleanup(tmp_path):
     os.utime(str(mock_old_session), (old_time, old_time))
 
     # Trigger cleanup with max_age_hours=72
-    res_cleanup = client.post("/api/storage/cleanup", json={"max_age_hours": 72})
+    res_cleanup = client.post("/api/storage/cleanup", headers=headers, json={"max_age_hours": 72})
     assert res_cleanup.status_code == 200
     cleanup_data = res_cleanup.json()
     assert cleanup_data["status"] == "success"

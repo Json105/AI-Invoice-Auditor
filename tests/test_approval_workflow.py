@@ -31,9 +31,28 @@ def setup_test_records():
     init_db(DEFAULT_DB_PATH)
 
 
+def _login_finance_headers() -> dict:
+    res = client.post(
+        "/api/auth/login",
+        json={"email": "finance@company.local", "password": "Finance1234!"},
+    )
+    assert res.status_code == 200
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
+def _login_employee_headers() -> dict:
+    res = client.post(
+        "/api/auth/login",
+        json={"email": "employee@company.local", "password": "User1234!"},
+    )
+    assert res.status_code == 200
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
 def test_approval_summary_api():
     """1. Test summary statistics endpoint for Boss / Finance dashboard."""
-    res = client.get("/api/approval/summary")
+    headers = _login_finance_headers()
+    res = client.get("/api/approval/summary", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert "submitted_count" in data
@@ -46,6 +65,7 @@ def test_approval_summary_api():
 
 def test_approval_workflow_happy_path():
     """2. Test Happy Path: Submitted -> Approved -> Paid."""
+    headers = _login_finance_headers()
     # Seed a new invoice report
     test_report = AuditReport(
         file_path="mock_taxi.png",
@@ -64,7 +84,7 @@ def test_approval_workflow_happy_path():
     save_audit_reports([test_report], applicant_name="王小明", applicant_email="wang@company.local")
 
     # Get the inserted record id
-    res_list = client.get("/api/approval/list?status=SUBMITTED")
+    res_list = client.get("/api/approval/list?status=SUBMITTED", headers=headers)
     assert res_list.status_code == 200
     records = res_list.json()["records"]
     target = next((r for r in records if r["invoice_number"] == "TX-998811"), None)
@@ -76,6 +96,7 @@ def test_approval_workflow_happy_path():
     # Step 1: Manager/Finance Approves
     res_review = client.post(
         f"/api/approval/{rec_id}/review",
+        headers=headers,
         json={"action": "approve", "notes": "符合差旅報銷規定，核准"}
     )
     assert res_review.status_code == 200
@@ -83,7 +104,7 @@ def test_approval_workflow_happy_path():
     assert review_data["approval_status"] == "APPROVED"
 
     # Verify status in database
-    res_approved_list = client.get("/api/approval/list?status=APPROVED")
+    res_approved_list = client.get("/api/approval/list?status=APPROVED", headers=headers)
     approved_target = next((r for r in res_approved_list.json()["records"] if r["id"] == rec_id), None)
     assert approved_target is not None
     assert approved_target["approval_status"] == "APPROVED"
@@ -92,6 +113,7 @@ def test_approval_workflow_happy_path():
     # Step 2: Cashier Marks as Paid
     res_paid = client.post(
         f"/api/approval/{rec_id}/mark-paid",
+        headers=headers,
         json={"paid_by": "財務出納處 (台新網銀轉帳)"}
     )
     assert res_paid.status_code == 200
@@ -99,7 +121,7 @@ def test_approval_workflow_happy_path():
     assert paid_data["approval_status"] == "PAID"
 
     # Verify final state
-    res_paid_list = client.get("/api/approval/list?status=PAID")
+    res_paid_list = client.get("/api/approval/list?status=PAID", headers=headers)
     paid_target = next((r for r in res_paid_list.json()["records"] if r["id"] == rec_id), None)
     assert paid_target is not None
     assert paid_target["approval_status"] == "PAID"
@@ -109,6 +131,8 @@ def test_approval_workflow_happy_path():
 
 def test_approval_workflow_return_and_resubmit():
     """3. Test Return with reason -> Employee Resubmission flow."""
+    fin_headers = _login_finance_headers()
+    emp_headers = _login_employee_headers()
     test_report = AuditReport(
         file_path="mock_hotel.json",
         status=AuditStatus.WARNING,
@@ -122,9 +146,9 @@ def test_approval_workflow_return_and_resubmit():
             purpose="出差住宿"
         )
     )
-    save_audit_reports([test_report], applicant_name="林專員", applicant_email="lin@company.local")
+    save_audit_reports([test_report], applicant_name="林專員", applicant_email="employee@company.local")
 
-    res_list = client.get("/api/approval/list?status=ALL")
+    res_list = client.get("/api/approval/list?status=ALL", headers=fin_headers)
     target = next((r for r in res_list.json()["records"] if r["invoice_number"] == "HTL-554433"), None)
     assert target is not None
     rec_id = target["id"]
@@ -132,6 +156,7 @@ def test_approval_workflow_return_and_resubmit():
     # Reject without notes should fail
     res_fail_return = client.post(
         f"/api/approval/{rec_id}/review",
+        headers=fin_headers,
         json={"action": "return", "notes": ""}
     )
     assert res_fail_return.status_code == 400
@@ -139,13 +164,14 @@ def test_approval_workflow_return_and_resubmit():
     # Return with specific reason
     res_return = client.post(
         f"/api/approval/{rec_id}/review",
+        headers=fin_headers,
         json={"action": "return", "notes": "請補附飯店水單明細以茲佐證"}
     )
     assert res_return.status_code == 200
     assert res_return.json()["approval_status"] == "RETURNED"
 
     # Check that record is now RETURNED
-    res_ret_list = client.get("/api/approval/list?status=RETURNED")
+    res_ret_list = client.get("/api/approval/list?status=RETURNED", headers=fin_headers)
     returned_target = next((r for r in res_ret_list.json()["records"] if r["id"] == rec_id), None)
     assert returned_target is not None
     assert "請補附飯店水單明細" in returned_target["review_notes"]
@@ -153,13 +179,14 @@ def test_approval_workflow_return_and_resubmit():
     # Employee resubmits
     res_resubmit = client.post(
         f"/api/approval/{rec_id}/resubmit",
+        headers=emp_headers,
         json={"notes": "已補上水單明細截圖，請再次覆核"}
     )
     assert res_resubmit.status_code == 200
     assert res_resubmit.json()["approval_status"] == "SUBMITTED"
 
     # Verify back to SUBMITTED
-    res_sub_list = client.get("/api/approval/list?status=SUBMITTED")
+    res_sub_list = client.get("/api/approval/list?status=SUBMITTED", headers=fin_headers)
     resubmitted_target = next((r for r in res_sub_list.json()["records"] if r["id"] == rec_id), None)
     assert resubmitted_target is not None
     assert resubmitted_target["approval_status"] == "SUBMITTED"

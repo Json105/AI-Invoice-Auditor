@@ -5,7 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI-Invoice Auditor | 智慧報銷平台</title>
   <meta name="description" content="支援台灣統一發票、高鐵票、計程車及海外單據之多模態 AI 智慧核銷系統，自動套表至企業標準報銷清冊。" />
-  
+  <meta name="theme-color" content="#2563EB" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icon-192.png" />
+
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,7 +20,56 @@
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
-  <div class="app-container">
+  <!-- Mandatory Enterprise Auth Gate Screen (未登入僅顯示此登入閘門) -->
+  <div id="auth-gate-screen" class="auth-gate-screen">
+    <div class="auth-gate-card">
+      <div class="auth-gate-brand">
+        <div class="brand-icon">
+          <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/><path d="M13 16h-5"/></svg>
+        </div>
+        <div>
+          <div class="auth-gate-title">AI-Invoice Auditor</div>
+          <div class="auth-gate-subtitle">中小型企業智慧差旅報銷與財務審批平台 · 請先登入驗證身份</div>
+        </div>
+      </div>
+
+      <div class="quick-login-banner">
+        <div class="quick-login-label">⚡ 快速帶入示範角色（依權限顯示對應工作台）：</div>
+        <div class="quick-login-buttons">
+          <button type="button" class="btn-quick-pill employee" onclick="quickFillGateLogin('employee')">👤 一般同仁 (上傳/專案/歷史)</button>
+          <button type="button" class="btn-quick-pill finance" onclick="quickFillGateLogin('finance')">💼 財務主管 (審批/匯出/後台)</button>
+          <button type="button" class="btn-quick-pill admin" onclick="quickFillGateLogin('admin')">👑 系統管理員 (全權限)</button>
+        </div>
+      </div>
+
+      <form id="gate-login-form" onsubmit="handleGateLoginSubmit(event)">
+        <div class="form-group">
+          <label class="form-label" for="gate-login-email">公司電子郵件 (Work Email)</label>
+          <input type="email" id="gate-login-email" class="form-input" placeholder="name@company.local" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="gate-login-password">密碼 (Password)</label>
+          <input type="password" id="gate-login-password" class="form-input" placeholder="••••••••" required />
+        </div>
+
+        <div id="gate-login-error" class="login-error-msg hidden"></div>
+
+        <div class="form-actions" style="margin-top: 1rem;">
+          <button type="submit" id="btn-gate-submit" class="btn btn-hero-primary" style="width: 100%; justify-content: center;">
+            <span>登入報銷系統</span>
+          </button>
+        </div>
+      </form>
+
+      <div class="auth-role-hints">
+        <span>👤 員工：上傳單據、管理出差專案、查個人歷史</span>
+        <span>💼 財務/管理員：財務審批中心、系統用量與帳號後台</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-shell" class="app-container auth-locked">
     <!-- Navigation Header -->
     <header class="app-header">
       <div class="brand">
@@ -35,6 +90,11 @@
               <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             </span> 單據辨識與稽核
           </button>
+          <button id="tab-trips-btn" class="nav-tab" onclick="switchTab('trips')">
+            <span class="tab-icon">
+              <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            </span> 出差報銷專案
+          </button>
           <button id="tab-approval-btn" class="nav-tab" onclick="switchTab('approval')">
             <span class="tab-icon">
               <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -54,16 +114,12 @@
       </div>
 
       <div class="header-status">
-        <div class="status-indicator" id="fx-status-indicator" title="台灣期交所/央行官方牌告即時匯率連線中">
+        <div class="status-indicator" id="fx-status-indicator" title="台灣銀行/期交所匯率連線中">
           <span class="status-dot green"></span>
           <span id="fx-status-label" class="status-label">即時匯率已連線</span>
         </div>
-        <div class="status-indicator">
-          <span class="status-dot blue"></span>
-          <span id="engine-badge-label" class="status-label">Mock 模式</span>
-        </div>
 
-        <!-- Enterprise User & RBAC Status -->
+        <!-- Enterprise User & RBAC Minimalist Dropdown -->
         <div class="header-auth" id="header-auth">
           <button id="btn-open-login" class="btn btn-secondary btn-sm" onclick="openLoginModal()">
             <span>
@@ -71,15 +127,18 @@
               同仁登入
             </span>
           </button>
-          <div id="user-profile-badge" class="user-profile-pill hidden">
-            <span id="user-role-tag" class="user-role-badge">Admin</span>
-            <span id="user-name-display" class="user-name-text">系統管理員</span>
-            <button type="button" class="btn-change-pw" onclick="openChangePasswordModal()" title="修改個人密碼">改密碼</button>
-            <a id="link-admin-panel" href="/admin" target="_blank" class="btn-admin-link hidden" title="前往 SQLAdmin 企業管理後台">後台管理</a>
-            <button class="btn-logout" onclick="logoutUser()" title="登出系統">
-              <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            </button>
-          </div>
+          <details id="user-profile-badge" class="user-menu-dropdown hidden">
+            <summary class="user-profile-pill">
+              <span id="user-role-tag" class="user-role-badge">Admin</span>
+              <span id="user-name-display" class="user-name-text">系統管理員</span>
+              <span class="text-xs text-subtle">▾</span>
+            </summary>
+            <div class="user-menu-popover">
+              <button type="button" class="user-menu-item" onclick="openChangePasswordModal()">🔑 修改個人密碼</button>
+              <a id="link-admin-panel" href="/admin" target="_blank" class="user-menu-item hidden" title="前往 SQLAdmin 企業管理後台">🛠️ 企業管理後台</a>
+              <button type="button" class="user-menu-item danger" onclick="logoutUser()">🚪 登出系統</button>
+            </div>
+          </details>
         </div>
       </div>
     </header>
@@ -91,50 +150,103 @@
       <section id="tab-audit" class="tab-pane active">
         <div class="audit-workspace">
           
-          <!-- 1. HERO INGESTION COMMAND CENTER (上傳核心居中放大) -->
+          <!-- 1. MINIMALIST HERO INGESTION COMMAND CENTER -->
           <div class="hero-command-card">
             
-            <!-- Collapsible Technical Settings (keeps employee UI clean while preserving all controls) -->
+            <!-- Trip Bundle Selector Bar (將分批上傳收斂進同一次出差專案) -->
+            <div id="upload-trip-bar" class="upload-trip-bar">
+              <div class="upload-trip-left">
+                <label class="upload-trip-label" for="upload-trip-select">
+                  <svg class="ui-icon ui-icon-xs text-accent" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                  出差專案：
+                </label>
+                <select id="upload-trip-select" class="form-select-inline upload-trip-select" onchange="onUploadTripChange()">
+                  <option value="">不指定專案（單次獨立送審）</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openTripModal(null, true)">+ 建立專案</button>
+              </div>
+              <div id="upload-trip-pill" class="upload-trip-pill hidden">
+                <span id="upload-trip-summary-text"></span>
+                <button type="button" class="btn-link-inline" onclick="openSelectedUploadTrip()">檢視明細</button>
+              </div>
+            </div>
+
+            <!-- Collapsible Ingestion, FX & Scanner Folder Settings (展開才顯示進階設定，平常極簡隱藏) -->
             <details class="advanced-settings-panel">
               <summary class="advanced-settings-summary">
-                <span>⚙️ 辨識引擎與匯出設定（預設自動套入公司公式 Excel）</span>
+                <span>⚙️ 進階設定：匯率模式 · 批次拆頁 · AI 引擎 · 事務機監控資料夾</span>
+                <span id="engine-badge-label" class="badge-mini-muted">Gemini 3.7 Flash</span>
               </summary>
-              <div class="command-toolbar">
-                <div class="toolbar-left">
-                  <div class="engine-badge-pill">
-                    <span class="engine-pill-icon">
-                      <svg class="ui-icon ui-icon-xs text-accent" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
-                    </span>
-                    <span class="engine-pill-label">AI 解析引擎：</span>
-                    <select id="engine-select" class="form-select-inline" onchange="onEngineChange()">
-                      <option value="gemini" selected>Gemini 3.7 Flash (雲端極速)</option>
-                      <option value="mock">離線展示模式 (免 API Key)</option>
-                    </select>
+              <div class="advanced-settings-body">
+                <div class="command-toolbar">
+                  <div class="toolbar-left">
+                    <div class="engine-badge-pill">
+                      <span class="engine-pill-label">AI 解析引擎：</span>
+                      <select id="engine-select" class="form-select-inline" onchange="onEngineChange()">
+                        <option value="gemini" selected>Gemini 3.7 Flash (雲端極速)</option>
+                        <option value="mock">離線展示模式 (免 API Key)</option>
+                      </select>
+                    </div>
+
+                    <div id="server-key-badge" class="server-key-badge hidden">
+                      <span><span class="status-dot green" style="display:inline-block; margin-right:4px;"></span> 伺服器金鑰已連線</span>
+                    </div>
+
+                    <div id="gemini-key-group" class="inline-key-input">
+                      <input type="password" id="api-key-input" class="form-input-sm" placeholder="輸入 Gemini API Key (選填)..." />
+                      <button type="button" class="btn-icon-sm" onclick="toggleKeyVisibility()" title="顯示/隱藏">
+                        <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
                   </div>
 
-                  <div id="server-key-badge" class="server-key-badge hidden">
-                    <span><span class="status-dot green" style="display:inline-block; margin-right:4px;"></span> 伺服器金鑰已連線</span>
-                  </div>
-
-                  <div id="gemini-key-group" class="inline-key-input">
-                    <input type="password" id="api-key-input" class="form-input-sm" placeholder="輸入 Gemini API Key (選填)..." />
-                    <button type="button" class="btn-icon-sm" onclick="toggleKeyVisibility()" title="顯示/隱藏">
-                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </button>
+                  <div class="toolbar-right">
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="apply-template-cb" checked />
+                      <span class="checkbox-custom-sm"></span>
+                      <span class="text-sm">自動產出公司 Excel</span>
+                    </label>
                   </div>
                 </div>
+                <div id="engine-hint" class="text-xs text-subtle" style="margin-top: 0.45rem;"></div>
 
-                <div class="toolbar-right">
-                  <label class="checkbox-inline">
-                    <input type="checkbox" id="apply-template-cb" checked />
-                    <span class="checkbox-custom-sm"></span>
-                    <span class="text-sm">自動產出報銷表 (<strong class="text-accent">Excel</strong>)</span>
-                  </label>
+                <!-- FX Mode & Batch Options -->
+                <div class="settings-subgrid">
+                  <div class="settings-subgroup">
+                    <label class="ingestion-opt-item" title="掃描機整疊紙本掃成 1 份多頁 PDF 時，系統自動逐頁拆圖並逐頁辨識">
+                      <input type="checkbox" id="split-pdf-cb" checked />
+                      <span>📄 多頁 PDF 自動逐頁拆圖</span>
+                    </label>
+                    <label class="ingestion-opt-item" title="桌面平鋪多張發票/收據拍成同一張照片時，AI 自動拆出多張單據">
+                      <input type="checkbox" id="multi-receipt-cb" />
+                      <span>🧩 單張照片含多張發票（平鋪合拍）</span>
+                    </label>
+                    <div class="text-xs text-subtle">💡 台灣電子發票會優先高速離線解碼 QR；中國發票、東南亞及歐美單據自動安全轉由 AI 視覺辨識。</div>
+                  </div>
+
+                  <div class="settings-subgroup">
+                    <div class="flex-align-center gap-2" style="flex-wrap: wrap;">
+                      <label class="text-sm" for="fx-mode-select" style="font-weight: 600;">💱 預設匯率：</label>
+                      <select id="fx-mode-select" class="form-select-inline" onchange="onFxModeChange()">
+                        <option value="auto_bot" selected>自動抓取消費當日台灣銀行匯率</option>
+                        <option value="manual">員工自訂統一匯率</option>
+                      </select>
+                      <input type="number" id="manual-fx-rate-input" class="form-input-sm hidden" style="width: 150px;" step="0.0001" min="0.0001" placeholder="1 外幣 = ? TWD" />
+                    </div>
+
+                    <div class="watch-folder-bar">
+                      <span class="text-xs text-muted" id="watch-folder-status-text">📁 事務機資料夾：待檢視</span>
+                      <div class="flex-align-center gap-2">
+                        <button type="button" id="btn-watch-refresh" class="btn btn-secondary btn-sm" onclick="loadWatchFolderStatus()">檢查</button>
+                        <button type="button" id="btn-watch-scan" class="btn btn-primary btn-sm" onclick="scanWatchFolder()">立即掃描匯入</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </details>
 
-            <!-- Wide Hero Dropzone Target -->
+            <!-- Wide Minimalist Dropzone Target -->
             <div id="dropzone" class="hero-dropzone" onclick="triggerFileInput()">
               <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelect(event)" />
               <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.pdf,.webp,.tiff,.tif,.bmp,.json" class="hidden" onchange="handleFileSelect(event)" />
@@ -142,9 +254,9 @@
                 <div class="hero-drop-icon">
                   <svg class="ui-icon ui-icon-xl" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
                 </div>
-                <div class="hero-drop-title">點擊選擇檔案，或將發票照片、掃描檔、PDF 拖曳至此</div>
+                <div class="hero-drop-title">拍照、選擇檔案或拖曳發票與 PDF 至此</div>
                 <div class="hero-drop-desc">
-                  支援手機拍照與電腦拖曳（JPG、PNG、WEBP、PDF、TIFF、BMP），自動解析金額與消費類別並套入公司公式 Excel
+                  自動解析單據明細、抓取消費當日台灣銀行匯率並套入公司公式 Excel
                 </div>
                 <div class="hero-drop-actions" onclick="event.stopPropagation()">
                   <button type="button" class="btn btn-primary" onclick="triggerCameraInput(event)">
@@ -159,12 +271,7 @@
                       選擇檔案或相簿
                     </span>
                   </button>
-                  <button type="button" class="btn btn-sample-glow" onclick="loadSampleFixtures()" title="快速載入內建發票、高鐵票、計程車與海外單據範本">
-                    <span>
-                      <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
-                      載入範例單據
-                    </span>
-                  </button>
+                  <button type="button" class="btn-link-inline" onclick="loadSampleFixtures()" title="快速載入內建發票、高鐵票、計程車與海外單據範本">載入範例單據</button>
                 </div>
               </div>
             </div>
@@ -189,103 +296,97 @@
               <div id="file-queue-list" class="queue-chips-flow"></div>
             </div>
 
-            <!-- Workflow Guide Strip (3 步驟流程條 + 4 大稽核標籤) -->
-            <div class="hero-guide-strip">
-              <!-- 3-Step Flow Stepper -->
-              <div class="guide-steps">
-                <div class="guide-step">
-                  <span class="step-num">1</span>
-                  <div class="step-meta">
-                    <span class="step-title">上傳單據</span>
-                    <span class="step-desc">發票、車票或收據</span>
+            <!-- Collapsible Workflow Guide & Capabilities (預設收合維持畫面極簡) -->
+            <details class="guide-drawer">
+              <summary class="guide-drawer-summary">ℹ️ 查看使用流程與自動稽核規則（3 步驟 · 統編 / 稅額 / 匯率防呆）</summary>
+              <div class="hero-guide-strip">
+                <div class="guide-steps">
+                  <div class="guide-step">
+                    <span class="step-num">1</span>
+                    <div class="step-meta">
+                      <span class="step-title">上傳單據</span>
+                      <span class="step-desc">發票、車票或收據</span>
+                    </div>
+                  </div>
+                  <div class="step-arrow">
+                    <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                  </div>
+                  <div class="guide-step">
+                    <span class="step-num">2</span>
+                    <div class="step-meta">
+                      <span class="step-title">智慧稽核</span>
+                      <span class="step-desc">統編與稅額防呆</span>
+                    </div>
+                  </div>
+                  <div class="step-arrow">
+                    <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                  </div>
+                  <div class="guide-step">
+                    <span class="step-num">3</span>
+                    <div class="step-meta">
+                      <span class="step-title">匯出報表</span>
+                      <span class="step-desc">產出標準 Excel</span>
+                    </div>
                   </div>
                 </div>
-                <div class="step-arrow">
-                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                </div>
-                <div class="guide-step">
-                  <span class="step-num">2</span>
-                  <div class="step-meta">
-                    <span class="step-title">智慧稽核</span>
-                    <span class="step-desc">統編與稅額防呆</span>
-                  </div>
-                </div>
-                <div class="step-arrow">
-                  <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                </div>
-                <div class="guide-step">
-                  <span class="step-num">3</span>
-                  <div class="step-meta">
-                    <span class="step-title">匯出報表</span>
-                    <span class="step-desc">產出標準 Excel</span>
-                  </div>
-                </div>
-              </div>
 
-              <!-- 4 Key Audit Guardrails Badges -->
-              <div class="guide-badges">
-                <span class="guide-badge" title="自動驗證財政部 8 碼乘數加權檢核碼">
-                  <span class="badge-icon">
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
-                  </span> 8 碼統編校驗
-                </span>
-                <span class="guide-badge" title="未稅金額 + 5% 營業稅 == 總金額 平準數學檢查">
-                  <span class="badge-icon">
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14"/><line x1="16" x2="16" y1="18"/><path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg>
-                  </span> 5% 稅額平準計算
-                </span>
-                <span class="guide-badge" title="跨月份歷史資料庫自動排重比對，防範重複報銷">
-                  <span class="badge-icon">
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-                  </span> 跨月防重複請款
-                </span>
-                <span class="guide-badge" title="支援 USD, EUR, RMB, THB 等多國幣別自動折算">
-                  <span class="badge-icon">
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
-                  </span> 多幣別即時折算
-                </span>
+                <div class="guide-badges">
+                  <span class="guide-badge" title="自動驗證財政部 8 碼乘數加權檢核碼">
+                    <span class="badge-icon">
+                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/></svg>
+                    </span> 8 碼統編校驗
+                  </span>
+                  <span class="guide-badge" title="未稅金額 + 5% 營業稅 == 總金額 平準數學檢查">
+                    <span class="badge-icon">
+                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/></svg>
+                    </span> 5% 稅額平準計算
+                  </span>
+                  <span class="guide-badge" title="跨月份歷史資料庫自動排重比對，防範重複報銷">
+                    <span class="badge-icon">
+                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </span> 跨月防重複請款
+                  </span>
+                  <span class="guide-badge" title="支援台銀消費當日匯率抓取與員工手動自訂">
+                    <span class="badge-icon">
+                      <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><circle cx="8" cy="8" r="6"/></svg>
+                    </span> 多幣別即時折算
+                  </span>
+                </div>
               </div>
-            </div>
+            </details>
 
           </div>
 
           <!-- 2. AUDIT RESULTS & EXPORT WORKSPACE -->
           <div class="results-workspace">
             
-            <!-- Immediate Download Banner (Hero Result Banner) -->
+            <!-- Immediate Download Banner (Hero Result Banner with Collapsed Secondary Formats) -->
             <div id="download-banner" class="download-hero-banner hidden">
               <div class="download-hero-text">
                 <div class="download-hero-title">
                   <svg class="ui-icon ui-icon-md text-emerald" viewBox="0 0 24 24" style="color: #059669;"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
-                  稽核完成！企業標準出差報銷單已填妥
+                  <span id="download-hero-title-text">稽核完成！企業標準出差報銷單已填妥</span>
                 </div>
-                <div class="download-hero-desc">已自動完成金額加總、匯率折算與費用分類，可直接下載報銷。</div>
+                <div class="download-hero-desc" id="download-hero-desc-text">已自動完成金額加總、匯率折算與費用分類，可直接下載報銷。</div>
               </div>
               <div class="download-hero-actions">
+                <button type="button" id="btn-goto-trip-detail" class="btn btn-primary btn-sm hidden" onclick="openLastUploadedTrip()">
+                  前往專案送審
+                </button>
                 <a id="btn-download-template" href="#" data-filename="Travel_Expenses_Report_Filled.xlsx" onclick="return handleProtectedDownload(event, this)" class="btn btn-emerald btn-lg">
                   <span>
                     <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                     下載出差報銷單 (Excel)
                   </span>
                 </a>
-                <a id="btn-download-excel" href="#" data-filename="expense_claim_report.xlsx" onclick="return handleProtectedDownload(event, this)" class="btn btn-secondary btn-sm">
-                  <span>
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
-                    通用 Excel
-                  </span>
-                </a>
-                <a id="btn-download-erp" href="#" data-filename="erp_journal_entry.csv" onclick="return handleProtectedDownload(event, this)" class="btn btn-secondary btn-sm" title="下載符合 SAP / NetSuite / 鼎新 ERP 之標準借貸平衡會計傳票分錄 (CSV)">
-                  <span>
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
-                    ERP 傳票 (CSV)
-                  </span>
-                </a>
-                <a id="btn-download-json" href="#" data-filename="audit_trail.json" onclick="return handleProtectedDownload(event, this)" class="btn btn-secondary btn-sm">
-                  <span>
-                    <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>
-                    結構化 JSON
-                  </span>
-                </a>
+                <details class="more-downloads-menu">
+                  <summary class="btn btn-secondary btn-sm">其他格式 ▾</summary>
+                  <div class="more-downloads-popover">
+                    <a id="btn-download-excel" href="#" data-filename="expense_claim_report.xlsx" onclick="return handleProtectedDownload(event, this)" class="user-menu-item">📄 通用 Excel 報表</a>
+                    <a id="btn-download-erp" href="#" data-filename="erp_journal_entry.csv" onclick="return handleProtectedDownload(event, this)" class="user-menu-item">🧾 ERP 會計傳票 (CSV)</a>
+                    <a id="btn-download-json" href="#" data-filename="audit_trail.json" onclick="return handleProtectedDownload(event, this)" class="user-menu-item">{} 結構化 JSON</a>
+                  </div>
+                </details>
               </div>
             </div>
 
@@ -337,11 +438,17 @@
                 </div>
               </div>
 
-              <!-- Loading Indicator -->
+              <!-- Loading Indicator & Batch Progress -->
               <div id="audit-loading" class="loading-state hidden">
                 <div class="spinner"></div>
                 <div class="loading-title">正在進行 AI 單據解析與審核...</div>
                 <div class="loading-sub">系統正自動檢核統編、稅額計算與防重複比對</div>
+                <div id="batch-progress-wrap" class="batch-progress-wrap hidden">
+                  <div class="batch-progress-bar">
+                    <div id="batch-progress-fill" class="batch-progress-fill" style="width: 0%;"></div>
+                  </div>
+                  <div id="batch-progress-text" class="batch-progress-text">準備分批上傳...</div>
+                </div>
               </div>
 
               <!-- Empty State -->
@@ -379,6 +486,59 @@
         </div>
       </section>
 
+      <!-- TAB: EXPENSE TRIPS WORKSPACE (出差報銷專案管理) -->
+      <section id="tab-trips" class="tab-pane">
+        <div class="approval-workspace">
+          <div class="approval-header-flex">
+            <div>
+              <h2 class="approval-main-title">
+                <svg class="ui-icon ui-icon-sm text-accent" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                出差報銷專案組合
+              </h2>
+              <p class="approval-subtitle">
+                集中管理整趟出差的機票、車票與住宿單據，一鍵匯出公司公式 Excel。
+              </p>
+            </div>
+            <div class="flex-align-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm btn-filter-toggle" onclick="toggleFilterPanel('trips-filter-panel')">
+                🔍 篩選 <span id="trips-filter-badge" class="filter-active-badge hidden">0</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="loadTrips()">重新整理</button>
+              <button type="button" class="btn btn-hero-primary btn-sm" onclick="openTripModal()">+ 建立出差專案</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header-flex" style="margin-bottom: 0.6rem;">
+              <span class="text-sm text-subtle" id="trips-count-label">共 0 個專案</span>
+            </div>
+
+            <div id="trips-filter-panel" class="collapsible-filter-panel hidden">
+              <div class="approval-filter-pills">
+                <button id="trip-filter-all" class="filter-pill trip-filter-pill active" onclick="setTripFilter('ALL')">全部專案</button>
+                <button id="trip-filter-draft" class="filter-pill trip-filter-pill" onclick="setTripFilter('DRAFT')">草稿收集中</button>
+                <button id="trip-filter-submitted" class="filter-pill trip-filter-pill" onclick="setTripFilter('SUBMITTED')">已送審</button>
+                <button id="trip-filter-approved" class="filter-pill trip-filter-pill" onclick="setTripFilter('APPROVED')">已核准待撥款</button>
+                <button id="trip-filter-returned" class="filter-pill trip-filter-pill" onclick="setTripFilter('RETURNED')">退件補件</button>
+                <button id="trip-filter-paid" class="filter-pill trip-filter-pill" onclick="setTripFilter('PAID')">已撥款結案</button>
+              </div>
+              <div class="flex-align-center gap-2" style="margin-top: 0.65rem; flex-wrap: wrap;">
+                <select id="trips-filter-user" class="form-select-inline hidden" onchange="loadTrips(); updateTripsFilterBadge();" title="依同仁篩選專案">
+                  <option value="">全部同仁</option>
+                </select>
+                <button type="button" class="btn-link-inline" onclick="clearTripsFilters()">清除篩選條件</button>
+              </div>
+            </div>
+
+            <div id="trips-card-grid" class="trips-grid">
+              <div class="empty-state">
+                <div class="empty-title">載入出差專案中...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- TAB 2: FINANCIAL APPROVAL WORKSPACE (小團隊財務審批中心) -->
       <section id="tab-approval" class="tab-pane">
         <div class="approval-workspace">
@@ -388,19 +548,22 @@
               <div class="flex-align-center gap-2">
                 <h2 class="approval-main-title">
                   <svg class="ui-icon ui-icon-sm text-accent" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                  財務審批與撥款工作台 (Approval Center)
+                  財務審批與撥款工作台
                 </h2>
-                <span class="badge-status badge-approved">● 審批流轉中</span>
               </div>
               <p class="approval-subtitle">
-                專為 5-10 人小型公司打造之極簡三步驟審批閉環：送審 ➔ 主管/財務覆核 ➔ 出納撥款結案
+                支援出差專案整案批核與單張發票退件補件。
               </p>
             </div>
-            <div class="approval-top-actions">
-              <button class="btn btn-secondary btn-sm" onclick="loadApprovalData()">
-                <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-                重新整理資料
+            <div class="approval-top-actions flex-align-center gap-2">
+              <div class="view-mode-switch">
+                <button type="button" id="appr-mode-trips" class="view-mode-btn active" onclick="switchApprovalView('trips')">出差專案整案</button>
+                <button type="button" id="appr-mode-records" class="view-mode-btn" onclick="switchApprovalView('records')">單筆發票明細</button>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm btn-filter-toggle" onclick="toggleFilterPanel('approval-filter-panel')">
+                🔍 篩選 <span id="approval-filter-badge" class="filter-active-badge hidden">0</span>
               </button>
+              <button class="btn btn-secondary btn-sm" onclick="loadApprovalData()">重新整理</button>
             </div>
           </div>
 
@@ -471,23 +634,30 @@
             </div>
           </div>
 
-          <!-- Filter Toolbar & Table Card -->
+          <!-- Collapsible Filter Toolbar & Dual-View Container -->
           <div class="card table-card">
-            <div class="card-header-flex">
+            <div class="card-header-flex" style="margin-bottom: 0.65rem;">
+              <span class="text-sm text-subtle" id="appr-table-count-label">共 0 筆資料</span>
+            </div>
+
+            <div id="approval-filter-panel" class="collapsible-filter-panel hidden">
               <div class="approval-filter-pills">
-                <button id="appr-filter-all" class="filter-pill active" onclick="setApprovalFilter('ALL')">全部單據</button>
+                <button id="appr-filter-all" class="filter-pill active" onclick="setApprovalFilter('ALL')">全部項目</button>
                 <button id="appr-filter-submitted" class="filter-pill" onclick="setApprovalFilter('SUBMITTED')">待審核</button>
                 <button id="appr-filter-approved" class="filter-pill" onclick="setApprovalFilter('APPROVED')">待撥款</button>
                 <button id="appr-filter-returned" class="filter-pill" onclick="setApprovalFilter('RETURNED')">退件需補件</button>
                 <button id="appr-filter-paid" class="filter-pill" onclick="setApprovalFilter('PAID')">已撥款結案</button>
-              </div>
-              <div class="table-legend">
-                <span class="text-sm text-subtle" id="appr-table-count-label">共 0 筆單據</span>
+                <button type="button" class="btn-link-inline" onclick="clearApprovalFilters()">重設</button>
               </div>
             </div>
 
-            <!-- Approval Table Viewport -->
-            <div class="table-responsive-viewport">
+            <!-- Bundle-first Trip Approval Cards -->
+            <div id="approval-trips-container" class="approval-trips-list">
+              <div class="text-center" style="padding: 2rem; color: var(--text-subtle);">載入出差專案審批清單中...</div>
+            </div>
+
+            <!-- Individual Receipt Approval Table Viewport -->
+            <div id="approval-records-container" class="table-responsive-viewport hidden">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -495,7 +665,7 @@
                     <th style="width: 105px;">審批狀態</th>
                     <th style="width: 90px;">AI 稽核</th>
                     <th style="width: 110px;">申請人</th>
-                    <th style="width: 130px;">單據號碼 / 類型</th>
+                    <th style="width: 150px;">單據號碼 / 專案</th>
                     <th>開立廠商 / 事由</th>
                     <th style="width: 110px;">報銷金額</th>
                     <th>審核備註 / 退件原因</th>
@@ -793,66 +963,43 @@
             <div>
               <h2 class="card-title">
                 <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" style="color: #2563EB;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-                歷史審計與防重複資料庫
+                歷史單據與匯率記錄
               </h2>
-              <div class="card-subtitle">所有經系統核銷之單據皆自動存檔，自動防止跨月重複請款或虛報。</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="loadHistory()">
-              <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-              重新整理資料
-            </button>
-          </div>
-
-          <!-- History Summary Cards -->
-          <div class="stats-grid history-stats">
-            <div class="stat-card">
-              <div class="stat-icon blue">
-                <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value" id="hist-total">0</div>
-                <div class="stat-label">資料庫累計發票總數</div>
+              <div class="compact-stats-bar">
+                <span>累計 <strong id="hist-total">0</strong> 筆</span>
+                <span>· 合規率 <strong id="hist-approved-rate" class="text-green">100%</strong></span>
+                <span>· <strong id="hist-currencies-count">0</strong> 種幣別</span>
               </div>
             </div>
-            <div class="stat-card">
-              <div class="stat-icon green">
-                <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value text-green" id="hist-approved-rate">100%</div>
-                <div class="stat-label">歷史合規率</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon amber">
-                <svg class="ui-icon ui-icon-md" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value text-amber" id="hist-currencies-count">0</div>
-                <div class="stat-label">涵蓋幣別種類</div>
-              </div>
+            <div class="flex-align-center gap-2" style="flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary btn-sm btn-filter-toggle" onclick="toggleFilterPanel('history-filter-panel')">
+                🔍 篩選 <span id="history-filter-badge" class="filter-active-badge hidden">0</span>
+              </button>
+              <button type="button" class="btn btn-emerald btn-sm" onclick="exportFilteredHistoryExcel()">匯出 Excel</button>
+              <button class="btn btn-secondary btn-sm" onclick="loadHistory()">重新整理</button>
             </div>
           </div>
 
-          <!-- History Filters & Excel Export Bar -->
-          <div class="history-filter-bar">
+          <!-- Collapsible History Filters (預設收合隱藏，需要時點「🔍 篩選」展開) -->
+          <div id="history-filter-panel" class="collapsible-filter-panel hidden">
             <div class="history-filter-controls">
-              <select id="history-filter-user" class="form-select-inline hidden" onchange="loadHistory()" title="依同仁篩選">
+              <select id="history-filter-user" class="form-select-inline hidden" onchange="loadHistory(); updateHistoryFilterBadge();" title="依同仁篩選">
                 <option value="">全部同仁</option>
               </select>
-              <select id="history-filter-status" class="form-select-inline" onchange="loadHistory()" title="依審核狀態篩選">
+              <select id="history-filter-trip" class="form-select-inline" onchange="loadHistory(); updateHistoryFilterBadge();" title="依出差專案篩選">
+                <option value="">全部出差專案</option>
+              </select>
+              <select id="history-filter-status" class="form-select-inline" onchange="loadHistory(); updateHistoryFilterBadge();" title="依審核狀態篩選">
                 <option value="">全部狀態</option>
                 <option value="APPROVED">合規 APPROVED</option>
                 <option value="WARNING">警示 WARNING</option>
                 <option value="REJECTED">違規 REJECTED</option>
               </select>
-              <input type="date" id="history-filter-from" class="form-input-sm" onchange="loadHistory()" title="起始日期" />
+              <input type="date" id="history-filter-from" class="form-input-sm" onchange="loadHistory(); updateHistoryFilterBadge();" title="起始日期" />
               <span class="filter-sep">～</span>
-              <input type="date" id="history-filter-to" class="form-input-sm" onchange="loadHistory()" title="結束日期" />
+              <input type="date" id="history-filter-to" class="form-input-sm" onchange="loadHistory(); updateHistoryFilterBadge();" title="結束日期" />
+              <button type="button" class="btn-link-inline" onclick="clearHistoryFilters()">清除條件</button>
             </div>
-            <button type="button" class="btn btn-emerald btn-sm" onclick="exportFilteredHistoryExcel()">
-              匯出篩選 Excel
-            </button>
           </div>
 
           <!-- History Table Viewport (Self-contained scrollable viewport with sticky header) -->
@@ -864,13 +1011,13 @@
                   <th style="width: 100px;">狀態</th>
                   <th style="width: 140px;">發票/單據號碼</th>
                   <th style="width: 105px;">單據日期</th>
-                  <th style="width: 110px;">原幣金額</th>
+                  <th style="width: 135px;">原幣 / 折合台幣</th>
                   <th style="width: 75px;">幣別</th>
                   <th style="width: 70px;">類別</th>
                   <th>開立商家</th>
                   <th>出差用途</th>
                   <th style="width: 100px;">上傳同仁</th>
-                  <th style="width: 90px;">原圖/明細</th>
+                  <th style="width: 110px;">操作 / 原圖</th>
                   <th style="width: 150px;">審核時間</th>
                 </tr>
               </thead>
@@ -1096,6 +1243,170 @@
           <a id="btn-download-original-receipt" href="#" class="btn btn-secondary btn-sm" download>下載原始檔案</a>
           <button type="button" class="btn btn-hero-primary btn-sm" onclick="closeReceiptPreviewModal()">關閉</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create / Edit Business Trip Modal -->
+  <div id="trip-form-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card review-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title" id="trip-form-modal-title">建立新出差報銷專案</div>
+        <button class="auth-modal-close" onclick="closeTripModal()">&times;</button>
+      </div>
+      <div class="auth-modal-body">
+        <form id="trip-form" onsubmit="handleTripFormSubmit(event)">
+          <input type="hidden" id="trip-form-id" />
+          <input type="hidden" id="trip-form-auto-select" value="0" />
+
+          <div class="form-group">
+            <label class="form-label" for="trip-input-title">出差名稱 / 專案標題 <span class="text-rose">*</span></label>
+            <input type="text" id="trip-input-title" class="form-input" placeholder="例如：2026/11 東京客戶拜訪五日出差" required />
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="trip-input-destination">出差地點 (選填)</label>
+              <input type="text" id="trip-input-destination" class="form-input" placeholder="例如：日本東京 / 高雄" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="trip-input-advance">預支旅費 NT$ (選填)</label>
+              <input type="number" id="trip-input-advance" class="form-input" min="0" step="any" value="0" />
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="trip-input-start-date">出發日期</label>
+              <input type="date" id="trip-input-start-date" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="trip-input-end-date">返回日期</label>
+              <input type="date" id="trip-input-end-date" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="trip-input-purpose">出差事由 / 備註說明 (選填)</label>
+            <textarea id="trip-input-purpose" class="form-textarea" rows="2" placeholder="例如：年度客戶拜訪與設備驗收..."></textarea>
+          </div>
+
+          <div id="trip-form-error" class="login-error-msg hidden"></div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeTripModal()">取消</button>
+            <button type="submit" id="btn-trip-form-submit" class="btn btn-hero-primary">儲存出差專案</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Business Trip Bundle Detail & Sub-receipts Modal -->
+  <div id="trip-detail-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card trip-detail-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title">
+          <span id="trip-detail-header-title">出差報銷專案明細</span>
+          <span id="trip-detail-status-badge" class="badge-appr badge-appr-submitted">DRAFT</span>
+        </div>
+        <button class="auth-modal-close" onclick="closeTripDetailModal()">&times;</button>
+      </div>
+      <div class="auth-modal-body trip-detail-body">
+        <div id="trip-detail-meta-bar" class="review-target-summary"></div>
+        <div id="trip-detail-summary-grid" class="trip-detail-summary-grid"></div>
+        <div id="trip-detail-actions" class="trip-detail-toolbar"></div>
+
+        <div class="table-responsive-viewport" style="max-height: 360px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 60px;">序號</th>
+                <th style="width: 100px;">審批狀態</th>
+                <th style="width: 85px;">AI 稽核</th>
+                <th style="width: 130px;">單據號碼 / 日期</th>
+                <th>商家 / 出差用途</th>
+                <th style="width: 110px;">金額</th>
+                <th>退件/審核意見</th>
+                <th style="width: 170px; text-align: center;">明細操作</th>
+              </tr>
+            </thead>
+            <tbody id="trip-detail-records-body">
+              <tr><td colspan="8" class="text-center">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exchange Rate Adjustment Modal (消費當日台銀匯率查詢 / 員工自訂匯率) -->
+  <div id="fx-edit-modal" class="auth-modal-backdrop hidden">
+    <div class="auth-modal-card review-modal-card">
+      <div class="auth-modal-header">
+        <div class="auth-modal-title">💱 調整單據換算匯率</div>
+        <button class="auth-modal-close" onclick="closeFxEditModal()">&times;</button>
+      </div>
+      <div class="auth-modal-body">
+        <div class="review-target-summary" id="fx-edit-summary"></div>
+        <form id="fx-edit-form" onsubmit="handleFxEditSubmit(event)">
+          <input type="hidden" id="fx-edit-record-id" />
+          <input type="hidden" id="fx-edit-currency" />
+          <input type="hidden" id="fx-edit-orig-amount" />
+
+          <div class="form-group">
+            <label class="form-label">匯率來源設定</label>
+            <div class="review-action-radios">
+              <label class="radio-card">
+                <input type="radio" name="fx_edit_mode" value="bot_date" checked onchange="onFxEditModeChange()" />
+                <div class="radio-card-content">
+                  <div class="radio-title">🏦 抓取消費當日台灣銀行匯率</div>
+                  <div class="radio-desc">依消費日向臺灣銀行牌告查詢（無即期匯率之東南亞幣別自動帶入現金賣出）</div>
+                </div>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="fx_edit_mode" value="manual" onchange="onFxEditModeChange()" />
+                <div class="radio-card-content">
+                  <div class="radio-title">✏️ 員工自行填寫匯率</div>
+                  <div class="radio-desc">依照信用卡帳單實際折算匯率或換匯水單填寫</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div id="fx-edit-bot-panel" class="form-group">
+            <div class="form-grid-2">
+              <div>
+                <label class="form-label" for="fx-edit-rate-date">消費日期基準日</label>
+                <input type="date" id="fx-edit-rate-date" class="form-input" />
+              </div>
+              <div>
+                <label class="form-label" for="fx-edit-rate-type">牌告匯率別</label>
+                <select id="fx-edit-rate-type" class="form-input">
+                  <option value="spot_sell" selected>即期賣出（優先）</option>
+                  <option value="cash_sell">現金賣出</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex-align-center gap-2" style="margin-top: 0.6rem; flex-wrap: wrap;">
+              <button type="button" id="btn-fx-lookup" class="btn btn-secondary btn-sm" onclick="previewBotRateLookup()">🔍 查詢台銀牌告匯率</button>
+              <span id="fx-edit-lookup-info" class="text-xs text-muted"></span>
+            </div>
+          </div>
+
+          <div id="fx-edit-manual-panel" class="form-group">
+            <label class="form-label" for="fx-edit-manual-rate">套用匯率（1 <span id="fx-edit-curr-label">外幣</span> = ? 台幣 TWD）</label>
+            <input type="number" id="fx-edit-manual-rate" class="form-input" step="0.00001" min="0.00001" required oninput="updateFxNtdPreview()" />
+          </div>
+
+          <div id="fx-edit-ntd-preview" class="fx-preview-banner">換算金額：NT$ 0</div>
+          <div id="fx-edit-error" class="login-error-msg hidden"></div>
+
+          <div class="form-actions" style="margin-top: 1rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeFxEditModal()">取消</button>
+            <button type="submit" id="btn-fx-edit-submit" class="btn btn-hero-primary">儲存匯率設定</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

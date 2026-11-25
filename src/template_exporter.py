@@ -8,7 +8,7 @@ audited items into the 'Report' sheet.
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import List, Union, Optional
+from typing import Any, Dict, List, Optional, Union
 import openpyxl
 from openpyxl.styles import Font, Alignment
 
@@ -70,13 +70,75 @@ def normalize_currency(currency_str: Optional[str]) -> str:
 
 
 class TemplateExpenseExporter:
-    """Populates audit reports into corporate Template.xlsx."""
+    """Populates audit reports into corporate Template.xlsx with dynamic row expansion."""
 
-    def __init__(self, reports: List[AuditReport], template_path: Union[str, Path] = "Template.xlsx"):
+    def __init__(
+        self,
+        reports: List[AuditReport],
+        template_path: Union[str, Path] = "Template.xlsx",
+        trip_meta: Optional[Dict[str, Any]] = None,
+    ):
         self.reports = reports
         self.template_path = Path(template_path)
+        self.trip_meta = trip_meta
         if not self.template_path.exists():
             raise FileNotFoundError(f"Template file not found at: {self.template_path}")
+
+    def _compute_travel_days(self) -> int:
+        """Compute business trip days from trip_meta dates or fallback to invoice dates."""
+        if self.trip_meta:
+            raw_start = (self.trip_meta.get("start_date") or "").strip().replace("/", "-")
+            raw_end = (self.trip_meta.get("end_date") or "").strip().replace("/", "-")
+            if raw_start and raw_end:
+                try:
+                    d1 = datetime.strptime(raw_start[:10], "%Y-%m-%d").date()
+                    d2 = datetime.strptime(raw_end[:10], "%Y-%m-%d").date()
+                    return max(1, (d2 - d1).days + 1)
+                except ValueError:
+                    pass
+
+        parsed_dates = []
+        for report in self.reports:
+            raw_date = (report.data.invoice_date or "").strip()
+            if raw_date:
+                normalized_date = raw_date.replace("/", "-")
+                try:
+                    parsed_dates.append(datetime.strptime(normalized_date[:10], "%Y-%m-%d").date())
+                except ValueError:
+                    pass
+        if parsed_dates:
+            return max(1, (max(parsed_dates) - min(parsed_dates)).days + 1)
+        return max(1, len(self.reports))
+
+    def _extend_dynamic_formulas(self, wb: openpyxl.Workbook, item_count: int) -> None:
+        """Extend Report, Rates, and Calc summary/mapping formulas beyond fixed template row limits."""
+        ws = wb["Report"]
+        last_report_row = max(85, 12 + item_count)
+        ws["C5"].value = f"=SUM(J13:J{last_report_row})"
+
+        if "Rates" in wb.sheetnames:
+            wb["Rates"]["C19"].value = f"=ROUND(SUM(Report!J13:J{last_report_row}),0)"
+
+        if "Calc" in wb.sheetnames:
+            ws_calc = wb["Calc"]
+            last_calc_row = max(121, 3 + item_count)
+            for idx in range(1, item_count + 1):
+                c_row = 3 + idx
+                r_row = 12 + idx
+                ws_calc.cell(row=c_row, column=1, value=f"=Report!A{r_row}")
+                ws_calc.cell(row=c_row, column=2, value=f"=Report!D{r_row}")
+                ws_calc.cell(row=c_row, column=3, value=f"=Report!H{r_row}")
+                ws_calc.cell(row=c_row, column=4, value=f'=IF(C{c_row}="H",Report!J{r_row},0)')
+                ws_calc.cell(row=c_row, column=5, value=f'=IF(C{c_row}="S",Report!J{r_row},0)')
+                ws_calc.cell(row=c_row, column=6, value=f'=IF(C{c_row}="I",Report!J{r_row},0)')
+                ws_calc.cell(row=c_row, column=7, value=f'=IF(C{c_row}="T",Report!J{r_row},0)')
+                ws_calc.cell(row=c_row, column=8, value=f'=IF(C{c_row}="F",Report!J{r_row},0)')
+                ws_calc.cell(row=c_row, column=9, value=f'=IF(C{c_row}="E",Report!J{r_row},0)')
+                ws_calc.cell(row=c_row, column=10, value=f"=IF(Report!F{r_row},0,Report!J{r_row})")
+                ws_calc.cell(row=c_row, column=11, value=f'=IF(D{c_row}>0,B{c_row}, " ")')
+
+            for col_letter in ("D", "E", "F", "G", "H", "I", "J"):
+                ws_calc[f"{col_letter}1"].value = f"=ROUND(SUM({col_letter}4:{col_letter}{last_calc_row}),0)"
 
     def export(self, output_path: Union[str, Path]) -> Path:
         """Populate items into template copy and save to output_path."""
@@ -105,28 +167,58 @@ class TemplateExpenseExporter:
             9: ("THB", live_rates.get("THB", 0.96)),
         }
 
-        for r, (curr, rate_val) in rate_rows.items():
+        # Sync a uniform explicit rate into the top 5-currency rate table if all items of that currency agree
+        uniform_rates: Dict[str, Optional[float]] = {}
+        for rpt in self.reports:
+            inv_r = rpt.data
+            if getattr(inv_r, "exchange_rate", None) and float(inv_r.exchange_rate) > 0:
+                code = normalize_currency(inv_r.currency)
+                rate_f = float(inv_r.exchange_rate)
+                if code not in uniform_rates:
+                    uniform_rates[code] = rate_f
+                elif uniform_rates[code] is not None and abs(uniform_rates[code] - rate_f) > 1e-4:
+                    uniform_rates[code] = None
+
+        top_table_rates: Dict[str, float] = {}
+        for r, (curr, default_val) in rate_rows.items():
+            resolved_rate = uniform_rates.get(curr) or default_val
+            rounded_top = round(float(resolved_rate), 4)
+            top_table_rates[curr] = rounded_top
             ws.cell(row=r, column=5, value=curr)  # Col E
-            ws.cell(row=r, column=6, value=round(rate_val, 3))  # Col F
-            ws.cell(row=r, column=7, value="央行/台銀牌告即時匯率")  # Col G
+            ws.cell(row=r, column=6, value=rounded_top)  # Col F
+            ws.cell(row=r, column=7, value="臺灣銀行牌告/自訂匯率")  # Col G
+
+        # Populate trip header metadata if exporting a trip bundle
+        if self.trip_meta:
+            trip_code = self.trip_meta.get("trip_code") or ""
+            trip_title = self.trip_meta.get("title") or ""
+            applicant = self.trip_meta.get("applicant_name") or ""
+            header_parts = [p for p in [f"[{trip_code}]" if trip_code else "", trip_title] if p]
+            header_label = " ".join(header_parts)
+            if applicant:
+                header_label = f"{header_label} — {applicant}" if header_label else applicant
+            if header_label:
+                cell_header = ws.cell(row=2, column=1, value=header_label)
+                cell_header.font = Font(name="Calibri", size=10, bold=True)
+
+            start_d = (self.trip_meta.get("start_date") or "").strip()
+            end_d = (self.trip_meta.get("end_date") or "").strip()
+            if start_d or end_d:
+                period_str = f"{start_d} ~ {end_d}".strip(" ~")
+                cell_period = ws.cell(row=2, column=5, value=period_str)
+                cell_period.font = Font(name="Calibri", size=10)
+
+            adv_pay = float(self.trip_meta.get("advance_payment") or 0.0)
+            if adv_pay > 0:
+                ws.cell(row=9, column=3, value=adv_pay)
 
         # Populate trip days (Report!F3) and top summary formulas (Report!C8, Report!C10)
-        parsed_dates = []
-        for report in self.reports:
-            raw_date = (report.data.invoice_date or "").strip()
-            if raw_date:
-                normalized_date = raw_date.replace("/", "-")
-                try:
-                    parsed_dates.append(datetime.strptime(normalized_date[:10], "%Y-%m-%d").date())
-                except ValueError:
-                    pass
-        if parsed_dates:
-            travel_days = max(1, (max(parsed_dates) - min(parsed_dates)).days + 1)
-        else:
-            travel_days = max(1, len(self.reports))
-        ws.cell(row=3, column=6, value=travel_days)  # F3: Days Travelling
+        ws.cell(row=3, column=6, value=self._compute_travel_days())  # F3: Days Travelling
         ws.cell(row=8, column=3, value="=C5")        # C8: Bonus / Subtotal
         ws.cell(row=10, column=3, value="=C5-C9")    # C10: Net Payment
+
+        # Extend Report, Rates, and Calc formula ranges for any batch size (including 100+ items)
+        self._extend_dynamic_formulas(wb, len(self.reports))
 
         # Base styles for data cells
         data_font = Font(name="Calibri", size=10)
@@ -209,12 +301,26 @@ class TemplateExpenseExporter:
             cell_comp.font = data_font
             cell_comp.alignment = left_align
 
-            # Col J (10): Always write complete 5-currency formula (fixes missing rows 22-30 and missing $E$9 in rows 31+)
-            ws.cell(
-                row=row_idx,
-                column=10,
-                value=f'=IF(D{row_idx}>0,(IF(D{row_idx}=$E$5,C{row_idx}*$F$5,IF(D{row_idx}=$E$6,C{row_idx}*$F$6,IF(D{row_idx}=$E$7,C{row_idx}*$F$7,IF(D{row_idx}=$E$8,C{row_idx}*$F$8,IF(D{row_idx}=$E$9,C{row_idx}*$F$9,C{row_idx}))))))," ")'
+            # Col J (10): Use 5-currency table formula unless per-receipt custom/dated rate differs
+            explicit_rate = getattr(invoice, "exchange_rate", None)
+            use_per_row_rate = (
+                explicit_rate is not None
+                and float(explicit_rate) > 0
+                and currency_code != "NT$"
+                and (
+                    currency_code not in top_table_rates
+                    or abs(float(explicit_rate) - top_table_rates[currency_code]) >= 1e-4
+                )
             )
+            if use_per_row_rate:
+                j_formula = f"=ROUND(C{row_idx}*{round(float(explicit_rate), 6)},2)"
+            else:
+                j_formula = (
+                    f'=IF(D{row_idx}>0,(IF(D{row_idx}=$E$5,C{row_idx}*$F$5,'
+                    f'IF(D{row_idx}=$E$6,C{row_idx}*$F$6,IF(D{row_idx}=$E$7,C{row_idx}*$F$7,'
+                    f'IF(D{row_idx}=$E$8,C{row_idx}*$F$8,IF(D{row_idx}=$E$9,C{row_idx}*$F$9,C{row_idx}))))))," ")'
+                )
+            ws.cell(row=row_idx, column=10, value=j_formula)
 
         wb.save(out)
         return out

@@ -1,14 +1,88 @@
 """Deterministic Mock Extractor for testing, CI/CD, and offline demos."""
 
+import hashlib
 import json
 from pathlib import Path
-from typing import Union
+from typing import List, Union
 from .base import BaseInvoiceExtractor
 from ..models import InvoiceData, DocumentType, InvoiceItem, TravelMetadata, ExpenseCategory
 
 
 class MockExtractor(BaseInvoiceExtractor):
     """Mock extractor providing realistic test cases without requiring API keys."""
+
+    def extract_many(self, file_path: Union[str, Path], multi_receipt: bool = False) -> List[InvoiceData]:
+        """Support multi-receipt JSON payloads and desk-collage multi-receipt mock photos."""
+        path = Path(file_path)
+        stem = path.stem.lower()
+
+        if path.suffix.lower() == ".json" and path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict) and isinstance(raw.get("invoices"), list):
+                return [InvoiceData.model_validate(item) for item in raw["invoices"]]
+            if isinstance(raw, list):
+                return [InvoiceData.model_validate(item) for item in raw]
+            return [InvoiceData.model_validate(raw)]
+
+        if multi_receipt and any(k in stem for k in ("multi", "desk", "group", "collage")):
+            tag = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:4].upper()
+            return [
+                InvoiceData(
+                    document_type=DocumentType.TW_INVOICE,
+                    invoice_number=f"MR-{tag}01",
+                    invoice_date="2026-11-10",
+                    buyer_tax_id="22099131",
+                    buyer_name="台灣積體電路製造股份有限公司",
+                    seller_tax_id="04541302",
+                    seller_name="鴻海商務文具補給站",
+                    currency="NT$",
+                    subtotal=1000.0,
+                    tax_amount=50.0,
+                    tax_rate=0.05,
+                    total_amount=1050.0,
+                    expense_category=ExpenseCategory.EXTRA,
+                    purpose="同框拍攝 - 會議簡報耗材採購",
+                    payment_method="Credit Card",
+                    confidence_score=0.97,
+                ),
+                InvoiceData(
+                    document_type=DocumentType.THSR_TICKET,
+                    invoice_number=f"HS-{tag}02",
+                    invoice_date="2026-11-10",
+                    buyer_tax_id="22099131",
+                    seller_tax_id="16446274",
+                    seller_name="台灣高速鐵路股份有限公司",
+                    currency="NT$",
+                    subtotal=667.0,
+                    tax_amount=33.0,
+                    tax_rate=0.05,
+                    total_amount=700.0,
+                    expense_category=ExpenseCategory.TRANSPORT,
+                    purpose="同框拍攝 - 高鐵差旅車票 (台北-台中)",
+                    payment_method="Credit Card",
+                    travel_details=TravelMetadata(departure="台北", destination="台中", train_or_flight_no="0615"),
+                    confidence_score=0.98,
+                ),
+                InvoiceData(
+                    document_type=DocumentType.TAXI_RECEIPT,
+                    invoice_number=f"TX-{tag}03",
+                    invoice_date="2026-11-10",
+                    seller_name="台灣大車隊 55688",
+                    currency="NT$",
+                    subtotal=280.0,
+                    tax_amount=0.0,
+                    tax_rate=0.0,
+                    total_amount=280.0,
+                    expense_category=ExpenseCategory.TRANSPORT,
+                    purpose="同框拍攝 - 高鐵站至客戶園區車資",
+                    payment_method="Cash",
+                    travel_details=TravelMetadata(departure="台中高鐵站", destination="中科園區", vehicle_number="TDC-9910"),
+                    confidence_score=0.95,
+                ),
+            ]
+
+        return [self.extract(file_path)]
 
     def extract(self, file_path: Union[str, Path]) -> InvoiceData:
         path = Path(file_path)

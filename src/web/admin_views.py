@@ -4,9 +4,10 @@ import os
 from typing import Any
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
+from sqladmin.filters import AllUniqueStringValuesFilter, BooleanFilter, OperationColumnFilter
 from starlette.requests import Request
 
-from ..database import User, AuditRecordDB, SessionLocal, engine
+from ..database import User, AuditRecordDB, ExpenseTripDB, SessionLocal, engine
 from ..services.auth_service import authenticate_user, hash_password
 
 
@@ -60,7 +61,11 @@ class UserAdmin(ModelView, model=User):
     ]
     column_searchable_list = [User.email, User.full_name, User.department]
     column_sortable_list = [User.id, User.email, User.role, User.created_at]
-    column_filters = [User.role, User.department, User.is_active]
+    column_filters = [
+        AllUniqueStringValuesFilter(User.role, title="角色權限"),
+        AllUniqueStringValuesFilter(User.department, title="歸屬部門"),
+        BooleanFilter(User.is_active, title="帳號啟用"),
+    ]
 
     form_columns = [
         User.email,
@@ -101,6 +106,75 @@ class UserAdmin(ModelView, model=User):
                 model.hashed_password = hashed
 
 
+class ExpenseTripAdmin(ModelView, model=ExpenseTripDB):
+    """Admin View for Business Trip Expense Bundles."""
+    name = "出差報銷專案"
+    name_plural = "出差報銷專案管理"
+    icon = "fa-solid fa-suitcase-rolling"
+
+    column_list = [
+        ExpenseTripDB.id,
+        ExpenseTripDB.trip_code,
+        ExpenseTripDB.title,
+        ExpenseTripDB.destination,
+        ExpenseTripDB.start_date,
+        ExpenseTripDB.end_date,
+        ExpenseTripDB.advance_payment,
+        ExpenseTripDB.applicant_name,
+        ExpenseTripDB.status,
+        ExpenseTripDB.created_at,
+    ]
+    column_searchable_list = [
+        ExpenseTripDB.trip_code,
+        ExpenseTripDB.title,
+        ExpenseTripDB.destination,
+        ExpenseTripDB.applicant_name,
+        ExpenseTripDB.applicant_email,
+    ]
+    column_sortable_list = [
+        ExpenseTripDB.id,
+        ExpenseTripDB.trip_code,
+        ExpenseTripDB.start_date,
+        ExpenseTripDB.status,
+        ExpenseTripDB.created_at,
+    ]
+    column_filters = [
+        AllUniqueStringValuesFilter(ExpenseTripDB.status, title="審批狀態"),
+        OperationColumnFilter(ExpenseTripDB.user_id, title="員工ID"),
+        AllUniqueStringValuesFilter(ExpenseTripDB.destination, title="目的地"),
+    ]
+    form_columns = [
+        ExpenseTripDB.trip_code,
+        ExpenseTripDB.title,
+        ExpenseTripDB.destination,
+        ExpenseTripDB.start_date,
+        ExpenseTripDB.end_date,
+        ExpenseTripDB.advance_payment,
+        ExpenseTripDB.purpose,
+        ExpenseTripDB.status,
+        ExpenseTripDB.applicant_name,
+        ExpenseTripDB.applicant_email,
+        ExpenseTripDB.review_notes,
+        ExpenseTripDB.paid_by,
+    ]
+    column_labels = {
+        ExpenseTripDB.id: "ID",
+        ExpenseTripDB.trip_code: "專案案號",
+        ExpenseTripDB.title: "出差名稱",
+        ExpenseTripDB.destination: "目的地",
+        ExpenseTripDB.start_date: "出發日期",
+        ExpenseTripDB.end_date: "返回日期",
+        ExpenseTripDB.advance_payment: "預支旅費 (NT$)",
+        ExpenseTripDB.purpose: "出差事由",
+        ExpenseTripDB.status: "審批狀態",
+        ExpenseTripDB.applicant_name: "申請人",
+        ExpenseTripDB.applicant_email: "申請人信箱",
+        ExpenseTripDB.review_notes: "審核備註",
+        ExpenseTripDB.paid_by: "撥款經辦人",
+        ExpenseTripDB.created_at: "建立時間",
+    }
+
+
 class AuditRecordAdmin(ModelView, model=AuditRecordDB):
     """Admin View for Audited Invoices, Approval Lifecycle, and Fraud Review."""
     name = "報銷憑證"
@@ -109,6 +183,7 @@ class AuditRecordAdmin(ModelView, model=AuditRecordDB):
 
     column_list = [
         AuditRecordDB.id,
+        AuditRecordDB.trip_id,
         AuditRecordDB.user_id,
         AuditRecordDB.invoice_number,
         AuditRecordDB.document_type,
@@ -130,19 +205,22 @@ class AuditRecordAdmin(ModelView, model=AuditRecordDB):
     ]
     column_sortable_list = [
         AuditRecordDB.id,
+        AuditRecordDB.trip_id,
         AuditRecordDB.user_id,
         AuditRecordDB.total_amount,
         AuditRecordDB.created_at,
         AuditRecordDB.approval_status,
     ]
     column_filters = [
-        AuditRecordDB.user_id,
-        AuditRecordDB.approval_status,
-        AuditRecordDB.audit_status,
-        AuditRecordDB.currency,
-        AuditRecordDB.document_type,
+        OperationColumnFilter(AuditRecordDB.trip_id, title="出差專案ID"),
+        OperationColumnFilter(AuditRecordDB.user_id, title="員工ID"),
+        AllUniqueStringValuesFilter(AuditRecordDB.approval_status, title="財務審批狀態"),
+        AllUniqueStringValuesFilter(AuditRecordDB.audit_status, title="AI 稽核結果"),
+        AllUniqueStringValuesFilter(AuditRecordDB.currency, title="幣別"),
+        AllUniqueStringValuesFilter(AuditRecordDB.document_type, title="單據類型"),
     ]
     form_columns = [
+        AuditRecordDB.trip_id,
         AuditRecordDB.invoice_number,
         AuditRecordDB.invoice_date,
         AuditRecordDB.document_type,
@@ -160,6 +238,7 @@ class AuditRecordAdmin(ModelView, model=AuditRecordDB):
     ]
     column_labels = {
         AuditRecordDB.id: "序號",
+        AuditRecordDB.trip_id: "出差專案ID",
         AuditRecordDB.user_id: "員工ID",
         AuditRecordDB.invoice_number: "發票/票據號碼",
         AuditRecordDB.document_type: "單據類型",
@@ -193,5 +272,6 @@ def setup_admin(app):
         logo_url=None,
     )
     admin.add_view(UserAdmin)
+    admin.add_view(ExpenseTripAdmin)
     admin.add_view(AuditRecordAdmin)
     return admin

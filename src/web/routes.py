@@ -6,13 +6,13 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from ..models import AuditStatus
-from ..auditor import InvoiceAuditor
 from ..exporter import ExpenseExporter
 from ..template_exporter import TemplateExpenseExporter
 from ..main import get_extractor
@@ -23,6 +23,8 @@ from ..database import (
     get_audit_statistics,
     get_audit_record_by_id,
     get_audit_records_for_export,
+    get_expense_trip_by_id,
+    update_record_exchange_rate,
     DEFAULT_DB_PATH
 )
 from .auth_routes import get_current_user_required, is_privileged_user
@@ -110,6 +112,7 @@ async def get_history(
     limit: int = 50,
     offset: int = 0,
     user_id: Optional[int] = Query(None),
+    trip_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -126,6 +129,7 @@ async def get_history(
             status=status,
             date_from=date_from,
             date_to=date_to,
+            trip_id=trip_id,
         )
         return {"total": len(records), "history": records}
     except Exception as e:
@@ -135,6 +139,7 @@ async def get_history(
 @router.get("/history/export")
 async def export_history_excel(
     user_id: Optional[int] = Query(None),
+    trip_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -142,12 +147,22 @@ async def export_history_excel(
 ):
     """Export filtered audit history records into Excel (Template.xlsx if available)."""
     effective_user_id = _resolve_effective_user_id(current_user, user_id)
+    trip_meta = None
+    if trip_id is not None:
+        trip_meta = get_expense_trip_by_id(trip_id, db_path=DEFAULT_DB_PATH)
+        if not trip_meta:
+            raise HTTPException(status_code=404, detail=f"找不到出差報銷專案 #{trip_id}")
+        if not is_privileged_user(current_user) and trip_meta.get("user_id") != current_user.id:
+            raise HTTPException(status_code=403, detail="無權限匯出其他同仁的出差報銷專案")
+
     reports = get_audit_records_for_export(
         db_path=DEFAULT_DB_PATH,
         user_id=effective_user_id,
         status=status,
         date_from=date_from,
         date_to=date_to,
+        trip_id=trip_id,
+        limit=2000 if trip_id is not None else 500,
     )
     if not reports:
         raise HTTPException(status_code=404, detail="查無符合條件的報銷單據可匯出")
@@ -157,7 +172,7 @@ async def export_history_excel(
     template_path = Path("Template.xlsx")
     if template_path.exists():
         out_path = export_dir / "Travel_Expenses_Report_Filtered.xlsx"
-        TemplateExpenseExporter(reports, template_path=template_path).export(out_path)
+        TemplateExpenseExporter(reports, template_path=template_path, trip_meta=trip_meta).export(out_path)
     else:
         out_path = export_dir / "expense_claim_filtered.xlsx"
         ExpenseExporter(reports).to_excel(out_path)
@@ -211,11 +226,27 @@ async def audit_documents(
     api_key: Optional[str] = Form(None),
     model: str = Form("gemini-3.7-flash"),
     apply_template: bool = Form(True),
+    trip_id: Optional[int] = Form(None),
+    skip_exports: bool = Form(False),
+    split_pdf: bool = Form(True),
+    multi_receipt: bool = Form(False),
+    fx_mode: str = Form("auto_bot"),
+    manual_exchange_rate: Optional[float] = Form(None),
     current_user: User = Depends(get_current_user_required),
 ):
-    """Upload documents, persist original receipts, run audits, save to DB, and export reports."""
+    """Upload documents, split multi-page PDFs if enabled, extract single or multi-receipt claims, audit, and export."""
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
+
+    trip_meta: Optional[Dict] = None
+    if trip_id is not None:
+        trip_meta = get_expense_trip_by_id(trip_id, db_path=DEFAULT_DB_PATH)
+        if not trip_meta:
+            raise HTTPException(status_code=404, detail=f"找不到出差報銷專案 #{trip_id}")
+        if not is_privileged_user(current_user) and trip_meta.get("user_id") != current_user.id:
+            raise HTTPException(status_code=403, detail="無權限上傳單據至其他同仁的出差專案")
+        if (trip_meta.get("status") or "").upper() in ("PAID", "REJECTED"):
+            raise HTTPException(status_code=400, detail="此出差專案已撥款結案或駁回，無法再新增單據")
 
     # Instantiate extractor before persisting files so invalid engine fails fast
     try:
@@ -234,7 +265,9 @@ async def audit_documents(
     month_dir = UPLOADS_DIR / str(current_user.id) / datetime.now().strftime("%Y-%m")
     month_dir.mkdir(parents=True, exist_ok=True)
 
-    saved_paths: List[Path] = []
+    from ..services.document_splitter import expand_uploaded_document
+
+    expanded_paths: List[Path] = []
     stored_files: Dict[str, Tuple[str, str]] = {}
     for file in files:
         safe_name = _sanitize_filename(file.filename)
@@ -246,66 +279,71 @@ async def audit_documents(
             )
 
         content = await file.read()
-        if len(content) > MAX_UPLOAD_BYTES:
+        max_bytes = 50 * 1024 * 1024 if suffix == ".pdf" else MAX_UPLOAD_BYTES
+        max_mb = 50 if suffix == ".pdf" else 20
+        if len(content) > max_bytes:
             raise HTTPException(
                 status_code=400,
-                detail=f"檔案 '{safe_name}' 超過 20 MB 上限",
+                detail=f"檔案 '{safe_name}' 超過 {max_mb} MB 上限",
             )
 
         target_path = month_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
         target_path.write_bytes(content)
-        saved_paths.append(target_path)
-        stored_files[str(target_path)] = (
-            str(target_path),
-            _detect_mime_type(target_path, file.content_type),
+
+        expanded_items = expand_uploaded_document(
+            file_path=target_path,
+            original_name=safe_name,
+            split_multipage_pdf=split_pdf,
         )
+        for item_path, _, item_mime in expanded_items:
+            resolved_mime = item_mime if suffix == ".pdf" and split_pdf else _detect_mime_type(item_path, file.content_type)
+            expanded_paths.append(item_path)
+            stored_files[str(item_path)] = (str(item_path), resolved_mime)
 
-    auditor = InvoiceAuditor(db_path=DEFAULT_DB_PATH)
-    reports = []
+    from ..services.ingestion_pipeline import audit_expanded_items
 
-    for file_path in saved_paths:
-        try:
-            invoice_data = extractor.extract(file_path)
-            report = auditor.audit(invoice_data, file_path=str(file_path))
-            reports.append(report)
-        except Exception as e:
-            # Create a rejected audit report on extraction failure
-            from ..models import InvoiceData, DocumentType, AuditIssue
-            failed_inv = InvoiceData(
-                document_type=DocumentType.GENERAL_RECEIPT,
-                total_amount=0.0,
-                notes=f"解析失敗: {str(e)}"
-            )
-            failed_report = auditor.audit(failed_inv, file_path=str(file_path))
-            failed_report.status = AuditStatus.REJECTED
-            failed_report.issues.append(
-                AuditIssue(code="ERR_EXTRACTION_FAILED", level="ERROR", message=f"檔案解析失敗: {str(e)}")
-            )
-            reports.append(failed_report)
+    reports, qr_fast_decoded_count = audit_expanded_items(
+        expanded_paths=expanded_paths,
+        extractor=extractor,
+        multi_receipt=multi_receipt,
+        fx_mode=fx_mode,
+        manual_exchange_rate=manual_exchange_rate,
+        db_path=DEFAULT_DB_PATH,
+    )
 
-    # Generate Generic Reports
-    exporter = ExpenseExporter(reports)
-    excel_path = session_dir / "expense_claim_report.xlsx"
-    json_path = session_dir / "audit_trail.json"
-    exporter.to_excel(excel_path)
-    exporter.to_json(json_path)
+    download_urls: Dict[str, str] = {}
+    if not skip_exports:
+        # Generate Generic Reports
+        exporter = ExpenseExporter(reports)
+        excel_path = session_dir / "expense_claim_report.xlsx"
+        json_path = session_dir / "audit_trail.json"
+        exporter.to_excel(excel_path)
+        exporter.to_json(json_path)
 
-    # Generate Corporate Template Report if Template.xlsx exists
-    template_path = Path("Template.xlsx")
-    template_filled = False
-    if apply_template and template_path.exists():
-        t_exporter = TemplateExpenseExporter(reports, template_path=template_path)
-        template_out = session_dir / "Travel_Expenses_Report_Filled.xlsx"
-        t_exporter.export(template_out)
-        template_filled = True
+        # Generate Corporate Template Report if Template.xlsx exists
+        template_path = Path("Template.xlsx")
+        template_filled = False
+        if apply_template and template_path.exists():
+            t_exporter = TemplateExpenseExporter(reports, template_path=template_path, trip_meta=trip_meta)
+            template_out = session_dir / "Travel_Expenses_Report_Filled.xlsx"
+            t_exporter.export(template_out)
+            template_filled = True
 
-    # Generate Standard Corporate ERP Journal Voucher (會計傳票分錄)
-    from ..erp_exporter import ERPExporter
-    erp_exporter = ERPExporter(reports)
-    erp_csv_path = session_dir / "erp_journal_entry.csv"
-    erp_json_path = session_dir / "erp_journal_entry.json"
-    erp_exporter.to_csv(erp_csv_path)
-    erp_exporter.to_json(erp_json_path)
+        # Generate Standard Corporate ERP Journal Voucher (會計傳票分錄)
+        from ..erp_exporter import ERPExporter
+        erp_exporter = ERPExporter(reports)
+        erp_csv_path = session_dir / "erp_journal_entry.csv"
+        erp_json_path = session_dir / "erp_journal_entry.json"
+        erp_exporter.to_csv(erp_csv_path)
+        erp_exporter.to_json(erp_json_path)
+
+        download_urls = {
+            "excel": f"/api/download/{session_id}/excel",
+            "json": f"/api/download/{session_id}/json",
+            "erp": f"/api/download/{session_id}/erp"
+        }
+        if template_filled:
+            download_urls["template"] = f"/api/download/{session_id}/template"
 
     # Persist to SQLite
     try:
@@ -316,6 +354,7 @@ async def audit_documents(
             db_path=DEFAULT_DB_PATH,
             user_id=current_user.id,
             stored_files=stored_files,
+            trip_id=trip_id,
         )
     except Exception as e:
         print(f"Warning: Failed to save to database: {e}")
@@ -324,14 +363,6 @@ async def audit_documents(
     approved = sum(1 for r in reports if r.status == AuditStatus.APPROVED)
     warning = sum(1 for r in reports if r.status == AuditStatus.WARNING)
     rejected = sum(1 for r in reports if r.status == AuditStatus.REJECTED)
-
-    download_urls = {
-        "excel": f"/api/download/{session_id}/excel",
-        "json": f"/api/download/{session_id}/json",
-        "erp": f"/api/download/{session_id}/erp"
-    }
-    if template_filled:
-        download_urls["template"] = f"/api/download/{session_id}/template"
 
     from ..services.storage_service import storage_service
     reports_payload = []
@@ -345,6 +376,10 @@ async def audit_documents(
 
     return {
         "session_id": session_id,
+        "trip_id": trip_id,
+        "source_files_count": len(files),
+        "expanded_pages_count": len(expanded_paths),
+        "qr_fast_decoded_count": qr_fast_decoded_count,
         "total": len(reports),
         "approved": approved,
         "warning": warning,
@@ -359,6 +394,72 @@ async def get_exchange_rates(refresh: bool = False):
     """Retrieve live foreign exchange rates from Bank of Taiwan / Taifex."""
     from ..services.fx_service import fx_service
     return fx_service.get_live_rates(force_refresh=refresh)
+
+
+@router.get("/rates/lookup")
+async def lookup_historical_exchange_rate(
+    currency: str = Query(...),
+    date: Optional[str] = Query(None),
+    rate_type: Literal["spot_sell", "cash_sell"] = Query("spot_sell"),
+):
+    """Lookup Bank of Taiwan exchange rate on a specific transaction date."""
+    from ..services.fx_service import fx_service
+    return fx_service.get_rate_for_date(currency, target_date=date, rate_type=rate_type)
+
+
+class RecordExchangeRateUpdate(BaseModel):
+    mode: Literal["manual", "bot_date"] = "manual"
+    exchange_rate: Optional[float] = Field(None, gt=0)
+    rate_date: Optional[str] = None
+    rate_type: Literal["spot_sell", "cash_sell"] = "spot_sell"
+
+
+@router.patch("/records/{record_id}/exchange-rate")
+async def update_record_exchange_rate_endpoint(
+    record_id: int,
+    req: RecordExchangeRateUpdate,
+    current_user: User = Depends(get_current_user_required),
+):
+    """Update a record's exchange rate either manually or via BOT historical date lookup."""
+    record = get_audit_record_by_id(record_id, db_path=DEFAULT_DB_PATH)
+    if not record:
+        raise HTTPException(status_code=404, detail="找不到該筆報銷單據")
+
+    if not is_privileged_user(current_user) and record.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="無權限修改其他同仁單據的匯率")
+
+    if not is_privileged_user(current_user) and (record.get("approval_status") or "").upper() in ("PAID", "REJECTED"):
+        raise HTTPException(status_code=400, detail="已撥款結案或駁回的單據不可再調整匯率")
+
+    if req.mode == "manual":
+        if req.exchange_rate is None or float(req.exchange_rate) <= 0:
+            raise HTTPException(status_code=400, detail="自訂匯率必須大於 0")
+        rate_val = float(req.exchange_rate)
+        source_str = "員工自訂匯率"
+        resolved_date = req.rate_date or record.get("invoice_date")
+    else:
+        from ..services.fx_service import fx_service
+        target_date = req.rate_date or record.get("invoice_date")
+        quote = fx_service.get_rate_for_date(
+            record.get("currency") or "USD",
+            target_date=target_date,
+            rate_type=req.rate_type,
+        )
+        rate_val = float(quote.get("rate") or 1.0)
+        source_str = str(quote.get("source") or "臺灣銀行牌告匯率")
+        resolved_date = str(quote.get("rate_date") or target_date or "")
+
+    updated = update_record_exchange_rate(
+        record_id=record_id,
+        exchange_rate=rate_val,
+        exchange_rate_source=source_str,
+        exchange_rate_date=resolved_date,
+        db_path=DEFAULT_DB_PATH,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="找不到該筆報銷單據")
+
+    return {"status": "success", "record": updated}
 
 
 @router.get("/download/{session_id}/{file_type}")

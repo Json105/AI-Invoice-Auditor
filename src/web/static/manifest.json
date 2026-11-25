@@ -1,0 +1,31 @@
+{
+  "name": "AI-Invoice Auditor | 企業智慧報銷平台",
+  "short_name": "智慧報銷",
+  "description": "支援出差單據拍照掃描、台灣電子發票 QR Code 高速解析、臺銀當日匯率折算與企業 Excel 公式套表。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

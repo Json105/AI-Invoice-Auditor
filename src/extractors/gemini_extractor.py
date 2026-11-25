@@ -4,10 +4,10 @@ import os
 import json
 import base64
 from pathlib import Path
-from typing import Union, Optional
+from typing import List, Optional, Union
 import requests
 
-from .base import BaseInvoiceExtractor, prepare_document_payload
+from .base import BaseInvoiceExtractor, clean_json_text, parse_invoices_payload, prepare_document_payload
 from ..models import InvoiceData, DocumentType
 
 EXTRACTION_SYSTEM_PROMPT = """You are an enterprise accounting AI expert specialized in extracting structured data from global financial documents including:
@@ -77,6 +77,18 @@ Important Rules:
 - For Taxi/Grab receipts, capture vehicle number if available, total fare, and travel date/time.
 """
 
+MULTI_RECEIPT_INSTRUCTION = """
+MULTI-RECEIPT MODE:
+This image or page may contain ONE OR MULTIPLE distinct invoices/tickets/receipts placed side-by-side or arranged together.
+Inspect the entire frame carefully and extract EVERY distinct receipt separately into a JSON wrapper object matching:
+{
+  "invoices": [
+    { ...same invoice schema as above... }
+  ]
+}
+Return ONLY valid JSON with key "invoices" containing an array of all detected receipts (even if there is only 1 receipt).
+"""
+
 
 class GeminiExtractor(BaseInvoiceExtractor):
     """Multimodal document extractor powered by Gemini 3.7 Flash."""
@@ -85,8 +97,8 @@ class GeminiExtractor(BaseInvoiceExtractor):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.model = model
 
-    def extract(self, file_path: Union[str, Path]) -> InvoiceData:
-        """Extract structured invoice data using Gemini Vision."""
+    def _call_gemini(self, file_path: Union[str, Path], prompt_text: str) -> str:
+        """Send encoded document payload and prompt to Gemini REST API and return cleaned JSON."""
         if not self.api_key:
             raise ValueError(
                 "Gemini API Key is missing! Set GEMINI_API_KEY environment variable "
@@ -100,14 +112,13 @@ class GeminiExtractor(BaseInvoiceExtractor):
         raw_bytes, mime_type = prepare_document_payload(path)
         encoded_data = base64.b64encode(raw_bytes).decode("utf-8")
 
-        # Call Gemini via REST API (compatible across all environments)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [
                 {
                     "parts": [
-                        {"text": EXTRACTION_SYSTEM_PROMPT},
+                        {"text": prompt_text},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
@@ -133,13 +144,17 @@ class GeminiExtractor(BaseInvoiceExtractor):
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"Unexpected response structure from Gemini API: {res_json}") from e
 
-        # Parse JSON
-        raw_text = raw_text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-        raw_text = raw_text.strip()
+        return clean_json_text(raw_text)
 
-        data_dict = json.loads(raw_text)
-        return InvoiceData.model_validate(data_dict)
+    def extract(self, file_path: Union[str, Path]) -> InvoiceData:
+        """Extract structured invoice data using Gemini Vision."""
+        cleaned = self._call_gemini(file_path, EXTRACTION_SYSTEM_PROMPT)
+        return InvoiceData.model_validate(json.loads(cleaned))
+
+    def extract_many(self, file_path: Union[str, Path], multi_receipt: bool = False) -> List[InvoiceData]:
+        """Extract one or multiple receipts from one photo/page using Gemini Vision."""
+        if not multi_receipt:
+            return [self.extract(file_path)]
+        prompt = f"{EXTRACTION_SYSTEM_PROMPT}\n\n{MULTI_RECEIPT_INSTRUCTION}"
+        cleaned = self._call_gemini(file_path, prompt)
+        return parse_invoices_payload(cleaned)
