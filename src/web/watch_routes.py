@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..database import DEFAULT_DB_PATH, User, get_expense_trip_by_id
+from ..extractors.gemini_extractor import DEFAULT_GEMINI_MODEL
 from ..services.watch_folder import watch_folder_service
 from .auth_routes import get_current_user_required, is_privileged_user
 
@@ -15,7 +16,7 @@ watch_router = APIRouter(prefix="/api/watch-folder", tags=["Watch Folder"])
 class WatchScanRequest(BaseModel):
     engine: str = "mock"
     api_key: Optional[str] = None
-    model: str = "gemini-3.7-flash"
+    model: str = DEFAULT_GEMINI_MODEL
     trip_id: Optional[int] = None
     split_pdf: bool = True
     multi_receipt: bool = False

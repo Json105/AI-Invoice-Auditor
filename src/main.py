@@ -14,11 +14,11 @@ from .auditor import InvoiceAuditor
 from .exporter import ExpenseExporter
 from .template_exporter import TemplateExpenseExporter
 from .extractors.mock_extractor import MockExtractor
-from .extractors.gemini_extractor import GeminiExtractor
+from .extractors.gemini_extractor import DEFAULT_GEMINI_MODEL, GeminiExtractor
 from .extractors.ollama_extractor import OllamaExtractor
 
 
-def get_extractor(engine: str, api_key: str = None, model: str = "gemini-3.7-flash"):
+def get_extractor(engine: str, api_key: str = None, model: str = DEFAULT_GEMINI_MODEL):
     """Factory to instantiate the selected extractor."""
     engine_lower = engine.lower()
     if engine_lower == "gemini":
@@ -35,7 +35,7 @@ def run_pipeline(
     input_path: Path,
     engine: str = "mock",
     api_key: str = None,
-    model: str = "gemini-3.7-flash",
+    model: str = DEFAULT_GEMINI_MODEL,
     output_dir: Path = Path("output"),
     template_path: Path = None,
     db_path: Path = Path("data/invoices.db"),
@@ -154,8 +154,8 @@ def main():
     )
     parser.add_argument(
         "-m", "--model",
-        default="gemini-3.7-flash",
-        help="Gemini model name (default: gemini-3.7-flash)"
+        default=DEFAULT_GEMINI_MODEL,
+        help="Gemini model name (optional override; defaults to GEMINI_MODEL or gemini-flash-latest)"
     )
     parser.add_argument(
         "-k", "--api-key",

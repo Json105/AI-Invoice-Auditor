@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..models import AuditStatus
 from ..exporter import ExpenseExporter
+from ..extractors.gemini_extractor import DEFAULT_GEMINI_MODEL
 from ..template_exporter import TemplateExpenseExporter
 from ..main import get_extractor
 from ..database import (
@@ -89,7 +90,7 @@ async def get_config():
     return {
         "has_server_api_key": has_key,
         "default_engine": "gemini",
-        "default_model": "gemini-3.7-flash",
+        "default_model": DEFAULT_GEMINI_MODEL,
         "template_available": Path("Template.xlsx").exists()
     }
 
@@ -224,7 +225,7 @@ async def audit_documents(
     files: List[UploadFile] = File(...),
     engine: str = Form("mock"),
     api_key: Optional[str] = Form(None),
-    model: str = Form("gemini-3.7-flash"),
+    model: str = Form(DEFAULT_GEMINI_MODEL),
     apply_template: bool = Form(True),
     trip_id: Optional[int] = Form(None),
     skip_exports: bool = Form(False),

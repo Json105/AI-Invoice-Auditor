@@ -1,4 +1,4 @@
-"""Gemini 3.7 Flash multimodal extractor for invoices and receipts."""
+"""Gemini multimodal extractor for invoices and receipts."""
 
 import os
 import json
@@ -9,6 +9,8 @@ import requests
 
 from .base import BaseInvoiceExtractor, clean_json_text, parse_invoices_payload, prepare_document_payload
 from ..models import InvoiceData, DocumentType
+
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 EXTRACTION_SYSTEM_PROMPT = """You are an enterprise accounting AI expert specialized in extracting structured data from global financial documents including:
 1. Taiwan Uniform Invoices (台灣統一發票: 二聯式, 三聯式, 電子發票證明聯) & THSR Tickets / Taxi Receipts
@@ -91,11 +93,11 @@ Return ONLY valid JSON with key "invoices" containing an array of all detected r
 
 
 class GeminiExtractor(BaseInvoiceExtractor):
-    """Multimodal document extractor powered by Gemini 3.7 Flash."""
+    """Multimodal document extractor powered by Google Gemini."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.7-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = DEFAULT_GEMINI_MODEL):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model = model
+        self.model = model or DEFAULT_GEMINI_MODEL
 
     def _call_gemini(self, file_path: Union[str, Path], prompt_text: str) -> str:
         """Send encoded document payload and prompt to Gemini REST API and return cleaned JSON."""

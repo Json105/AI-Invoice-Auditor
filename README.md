@@ -39,7 +39,7 @@
    * 介面遵循極簡原則，日常操作聚焦上傳與核心結果；篩選工具列（`🔍 篩選`）、進階引擎／匯率設定與教學指引皆採預設折疊，需要時一鍵展開。
    * 內建 **PWA (`manifest.json` + `/sw.js`)**，手機瀏覽器點擊「加入主畫面」即可像原生 App 一樣一鍵打開拍照上傳（Service Worker 嚴格略過 `/api/` 與 `/admin` 快取，不暫存任何帳密或敏感單據）。
 2. **🤖 多引擎 AI 架構 & 輕鬆擴充（Gemini / Ollama / OpenAI 相容延伸）**
-   * **Google Gemini（預設 `gemini-3.7-flash`）**：雲端多模態視覺理解，支援中／英／日／東南亞／歐美跨國單據與 Pydantic v2 嚴格 JSON Schema 輸出。
+   * **Google Gemini**：雲端多模態視覺理解，支援中／英／日／東南亞／歐美跨國單據與 Pydantic v2 嚴格 JSON Schema 輸出。
    * **地端 Ollama（如 `llama3.2-vision`、`qwen2.5-vl`）**：Web 前端引擎選單與 CLI 皆可直接切換，高敏感憑證推論**完全不出企業內網**。
    * **確定性 Mock 引擎**與標準 **`BaseInvoiceExtractor` 抽象介面**（`extract()` / `extract_many()`）：無需 API Key 即可測試全流程，亦方便擴充串接 OpenAI GPT-4o、Claude 或任何 OpenAI-Compatible API（vLLM / Azure OpenAI）。
 3. **🧳 出差報銷專案組合（Business Trip Bundles）**
@@ -168,7 +168,7 @@ python3 -m src.main --input sample_data --engine mock --output output --template
 
 # 2. 使用 Google Gemini 批次辨識真實單據
 export GEMINI_API_KEY="your-gemini-api-key"
-python3 -m src.main --input /path/to/your/invoices --engine gemini --model gemini-3.7-flash --template Template.xlsx
+python3 -m src.main --input /path/to/your/invoices --engine gemini --template Template.xlsx
 
 # 3. 使用地端 Ollama 離線保密辨識
 ollama run llama3.2-vision

@@ -1,7 +1,7 @@
 {
   "name": "Google Stitch - Enterprise IDP Analytics Dashboard Spec",
   "version": "2.0.0",
-  "author": "Google Stitch UI Engine (Gemini 3.7 Flash)",
+  "author": "Google Stitch UI Engine (Gemini)",
   "aesthetic_philosophy": "Linear-inspired Minimalist Tech with Deep Dark Glassmorphism",
   "tokens": {
     "colors": {

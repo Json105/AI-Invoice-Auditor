@@ -464,10 +464,10 @@ async function loadServerConfig() {
       if (serverBadge) serverBadge.classList.remove('hidden');
       if (apiKeyInput) apiKeyInput.placeholder = '伺服器已預設 API Key（免手動填寫，可直接辨識）';
       if (apiKeyHint) apiKeyHint.textContent = '🟢 伺服器端已連線 GEMINI_API_KEY，同仁免輸金鑰。';
-      if (badgeLabel) badgeLabel.textContent = 'Gemini 3.7 Flash 雲端';
+      if (badgeLabel) badgeLabel.textContent = 'Gemini 雲端';
     } else {
       if (serverBadge) serverBadge.classList.add('hidden');
-      if (badgeLabel) badgeLabel.textContent = 'Gemini 3.7 Flash 雲端';
+      if (badgeLabel) badgeLabel.textContent = 'Gemini 雲端';
     }
   } catch (e) {
     console.error("Failed to load server config", e);
@@ -600,7 +600,7 @@ function onEngineChange() {
   if (engine === 'gemini') {
     if (keyGroup) keyGroup.classList.remove('hidden');
     if (engineHint) engineHint.textContent = '採用 Google 雲端多模態視覺模型，辨識速度 1~2 秒，跨國多幣別理解力最強。';
-    if (badgeLabel) badgeLabel.textContent = 'Gemini 3.7 Flash 雲端';
+    if (badgeLabel) badgeLabel.textContent = 'Gemini 雲端';
   } else if (engine === 'ollama') {
     if (keyGroup) keyGroup.classList.add('hidden');
     if (engineHint) engineHint.textContent = '連線本機 Ollama 視覺模型 (llama3.2-vision)，單據完全不出企業內網。';

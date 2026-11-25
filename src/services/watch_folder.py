@@ -15,6 +15,7 @@ from ..database import (
     save_audit_reports,
 )
 from ..main import get_extractor
+from ..extractors.gemini_extractor import DEFAULT_GEMINI_MODEL
 from ..models import AuditReport, AuditStatus
 from .document_splitter import expand_uploaded_document
 from .ingestion_pipeline import audit_expanded_items
@@ -134,7 +135,7 @@ class WatchFolderService:
         user: Optional[User] = None,
         engine: str = "mock",
         api_key: Optional[str] = None,
-        model: str = "gemini-3.7-flash",
+        model: str = DEFAULT_GEMINI_MODEL,
         trip_id: Optional[int] = None,
         split_pdf: bool = True,
         multi_receipt: bool = False,

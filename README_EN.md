@@ -39,7 +39,7 @@ For SMBs, startups, and lean operations teams, heavy enterprise expense SaaS sui
    * Clean distraction-free upload workspace with collapsible advanced settings, guide drawer, and on-demand list filters (`🔍 篩選`).
    * **Progressive Web App (`manifest.json` + `/sw.js`)**: Install directly onto mobile home screens for native-like receipt capture without image compression; Service Worker strictly bypasses `/api/` and `/admin` routes so credentials and receipts are never cached.
 2. **🤖 Multi-Engine AI Architecture & Easy Extensibility (Gemini / Ollama / OpenAI-Compatible)**
-   * **Google Gemini (Default `gemini-3.7-flash`)**: High-accuracy multimodal vision parsing across domestic and international receipts into strict Pydantic v2 JSON schemas.
+   * **Google Gemini**: High-accuracy multimodal vision parsing across domestic and international receipts into strict Pydantic v2 JSON schemas.
    * **On-Premise Ollama (`llama3.2-vision`, `qwen2.5-vl`, etc.)**: Selectable directly from both the Web UI dropdown and CLI for 100% air-gapped internal inference.
    * **Deterministic Mock Engine & `BaseInvoiceExtractor` Interface**: Run complete offline verification without an API key, or subclass `BaseInvoiceExtractor` (`extract()` / `extract_many()`) to plug in OpenAI GPT-4o, Claude, vLLM, or any OpenAI-compatible endpoint.
 3. **🧳 Business Trip Bundles (`出差報銷專案組合`)**
@@ -166,7 +166,7 @@ python3 -m src.main --input sample_data --engine mock --output output --template
 
 # 2. Batch extraction with Gemini
 export GEMINI_API_KEY="your-gemini-api-key"
-python3 -m src.main --input /path/to/invoices --engine gemini --model gemini-3.7-flash --template Template.xlsx
+python3 -m src.main --input /path/to/invoices --engine gemini --template Template.xlsx
 
 # 3. Air-gapped on-premise mode with Ollama
 ollama run llama3.2-vision
