@@ -464,6 +464,10 @@ async function loadServerConfig() {
         `<option value="${escapeHtml(m.id)}" ${m.id === cfg.default_openrouter_model ? 'selected' : ''}>${escapeHtml(m.label)}</option>`
       )).join('');
     }
+    const engineSelect = document.getElementById('engine-select');
+    if (engineSelect && serverHasOpenRouterKey && !serverHasKey) {
+      engineSelect.value = 'openrouter';
+    }
     onEngineChange();
   } catch (e) {
     console.error("Failed to load server config", e);

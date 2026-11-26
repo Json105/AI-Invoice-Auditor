@@ -9,6 +9,11 @@ import argparse
 from pathlib import Path
 from typing import List
 
+from .services.env_loader import load_env_file
+
+# Load local .env before importing extractors so model/key defaults apply in CLI mode
+load_env_file()
+
 from .models import AuditReport, AuditStatus
 from .auditor import InvoiceAuditor
 from .exporter import ExpenseExporter

@@ -12,6 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from ..services.env_loader import load_env_file
+
+# Load local .env before importing routes/extractors so model and key defaults resolve on startup
+load_env_file()
+
 from .routes import router
 from ..database import init_db, DEFAULT_DB_PATH
 from ..services.watch_folder import watch_folder_service
@@ -21,7 +26,12 @@ logger = logging.getLogger(__name__)
 
 async def _watch_folder_poll_loop(interval_seconds: int) -> None:
     """Optional background polling loop when WATCH_FOLDER_AUTO_POLL_SECONDS > 0."""
-    engine = os.getenv("WATCH_FOLDER_ENGINE", "gemini" if os.getenv("GEMINI_API_KEY") else "mock")
+    fallback_engine = (
+        "gemini"
+        if os.getenv("GEMINI_API_KEY")
+        else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "mock")
+    )
+    engine = os.getenv("WATCH_FOLDER_ENGINE", fallback_engine)
     while True:
         try:
             watch_folder_service.scan_and_ingest(engine=engine, is_privileged=True)

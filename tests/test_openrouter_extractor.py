@@ -191,3 +191,37 @@ def test_openrouter_api_config_audit_and_ui():
     assert res_html.status_code == 200
     assert 'value="openrouter"' in res_html.text
     assert 'id="openrouter-model-select"' in res_html.text
+
+
+def test_env_loader_parses_dotenv_without_overwriting_existing_env(tmp_path, monkeypatch):
+    """load_env_file parses comments, export, and quotes while respecting override flag."""
+    from src.services.env_loader import load_env_file
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n"
+        "# comment line\n"
+        "PLAIN_KEY=plain_val # trailing inline comment\n"
+        "QUOTED_DOUBLE=\"hello world # kept\"\n"
+        "QUOTED_SINGLE='single value'\n"
+        "export EXPORTED_KEY=exported_val\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("PLAIN_KEY", raising=False)
+    monkeypatch.delenv("QUOTED_DOUBLE", raising=False)
+    monkeypatch.delenv("QUOTED_SINGLE", raising=False)
+    monkeypatch.setenv("EXPORTED_KEY", "existing_val")
+
+    assert load_env_file(env_file) is True
+    assert Path(env_file).exists()
+    import os
+
+    assert os.environ["PLAIN_KEY"] == "plain_val"
+    assert os.environ["QUOTED_DOUBLE"] == "hello world # kept"
+    assert os.environ["QUOTED_SINGLE"] == "single value"
+    assert os.environ["EXPORTED_KEY"] == "existing_val"
+
+    assert load_env_file(env_file, override=True) is True
+    assert os.environ["EXPORTED_KEY"] == "exported_val"
+    assert load_env_file(tmp_path / "missing.env") is False
