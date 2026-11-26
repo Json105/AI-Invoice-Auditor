@@ -29,6 +29,15 @@ from ..database import (
     update_record_exchange_rate,
     DEFAULT_DB_PATH
 )
+from ..services.ai_policy import (
+    QuotaExceededError,
+    check_ai_quota,
+    get_ai_usage_summary,
+    get_system_ai_config,
+    record_ai_usage,
+    resolve_effective_ai_execution,
+    update_system_ai_config,
+)
 from .auth_routes import get_current_user_required, is_privileged_user
 
 router = APIRouter(prefix="/api")
@@ -96,8 +105,67 @@ async def get_config():
         "default_model": DEFAULT_GEMINI_MODEL,
         "default_openrouter_model": DEFAULT_OPENROUTER_MODEL,
         "openrouter_models": OPENROUTER_FREE_VISION_MODELS,
+        "ai_policy": get_system_ai_config(),
         "template_available": Path("Template.xlsx").exists()
     }
+
+
+class SystemAIPolicyUpdate(BaseModel):
+    active_engine: str
+    active_model: Optional[str] = None
+    enable_fallback: bool = True
+    lock_model_for_non_admin: bool = True
+    daily_limit_per_user: int = Field(0, ge=0, le=100000)
+    monthly_limit_total: int = Field(0, ge=0, le=10000000)
+
+
+@router.get("/admin/ai-policy")
+async def get_admin_ai_policy(
+    current_user: User = Depends(get_current_user_required),
+):
+    """Return system AI governance policy and available models for privileged roles."""
+    if not is_privileged_user(current_user):
+        raise HTTPException(status_code=403, detail="僅主管、財務或系統管理員可檢視 AI 模型控管設定")
+    return {
+        "policy": get_system_ai_config(),
+        "openrouter_models": OPENROUTER_FREE_VISION_MODELS,
+        "has_server_api_key": bool(os.getenv("GEMINI_API_KEY")),
+        "has_openrouter_api_key": bool(os.getenv("OPENROUTER_API_KEY")),
+        "can_edit": current_user.role == "admin",
+    }
+
+
+@router.put("/admin/ai-policy")
+async def update_admin_ai_policy(
+    req: SystemAIPolicyUpdate,
+    current_user: User = Depends(get_current_user_required),
+):
+    """Allow admin role to lock/switch system AI engine, model, and quota caps."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="僅系統管理員 (admin) 可修改全系統 AI 模型與配額設定")
+    try:
+        updated = update_system_ai_config(
+            active_engine=req.active_engine,
+            active_model=req.active_model,
+            enable_fallback=req.enable_fallback,
+            lock_model_for_non_admin=req.lock_model_for_non_admin,
+            daily_limit_per_user=req.daily_limit_per_user,
+            monthly_limit_total=req.monthly_limit_total,
+            updated_by=current_user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "success", "policy": updated}
+
+
+@router.get("/admin/ai-usage")
+async def get_admin_ai_usage(
+    current_user: User = Depends(get_current_user_required),
+):
+    """Return per-model and per-user AI usage statistics for privileged roles."""
+    if not is_privileged_user(current_user):
+        raise HTTPException(status_code=403, detail="僅主管、財務或系統管理員可檢視 AI 用量統計")
+    return get_ai_usage_summary()
 
 
 @router.get("/stats")
@@ -254,9 +322,22 @@ async def audit_documents(
         if (trip_meta.get("status") or "").upper() in ("PAID", "REJECTED"):
             raise HTTPException(status_code=400, detail="此出差專案已撥款結案或駁回，無法再新增單據")
 
+    # Enforce admin-locked engine/model policy for non-admin roles
+    effective_ai = resolve_effective_ai_execution(
+        user=current_user,
+        requested_engine=engine,
+        requested_model=model,
+        requested_api_key=api_key,
+    )
+
     # Instantiate extractor before persisting files so invalid engine fails fast
     try:
-        extractor = get_extractor(engine, api_key=api_key, model=model)
+        extractor = get_extractor(
+            effective_ai["engine"],
+            api_key=effective_ai["api_key"],
+            model=effective_ai["model"],
+            enable_fallback=effective_ai["enable_fallback"],
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid extractor configuration: {str(e)}")
 
@@ -306,6 +387,11 @@ async def audit_documents(
             expanded_paths.append(item_path)
             stored_files[str(item_path)] = (str(item_path), resolved_mime)
 
+    try:
+        check_ai_quota(current_user, requested_units=max(1, len(expanded_paths)), source="web_audit")
+    except QuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+
     from ..services.ingestion_pipeline import audit_expanded_items
 
     reports, qr_fast_decoded_count = audit_expanded_items(
@@ -316,6 +402,26 @@ async def audit_documents(
         manual_exchange_rate=manual_exchange_rate,
         db_path=DEFAULT_DB_PATH,
     )
+
+    actual_model = (
+        getattr(extractor, "last_used_model", None)
+        or getattr(extractor, "model", None)
+        or effective_ai["model"]
+    )
+    ai_calls_executed = max(0, len(expanded_paths) - qr_fast_decoded_count)
+    try:
+        record_ai_usage(
+            user=current_user,
+            engine=effective_ai["engine"],
+            model=actual_model,
+            documents_count=len(expanded_paths),
+            ai_calls_count=ai_calls_executed,
+            qr_fast_decoded_count=qr_fast_decoded_count,
+            source="web_audit",
+            status="success",
+        )
+    except Exception:
+        pass
 
     download_urls: Dict[str, str] = {}
     if not skip_exports:
@@ -390,6 +496,11 @@ async def audit_documents(
         "approved": approved,
         "warning": warning,
         "rejected": rejected,
+        "ai_execution": {
+            "engine": effective_ai["engine"],
+            "model": actual_model,
+            "policy_locked": effective_ai["policy_locked"],
+        },
         "download_urls": download_urls,
         "reports": reports_payload
     }

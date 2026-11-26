@@ -7,7 +7,15 @@ from sqladmin.authentication import AuthenticationBackend
 from sqladmin.filters import AllUniqueStringValuesFilter, BooleanFilter, OperationColumnFilter
 from starlette.requests import Request
 
-from ..database import User, AuditRecordDB, ExpenseTripDB, SessionLocal, engine
+from ..database import (
+    AIUsageLogDB,
+    AuditRecordDB,
+    ExpenseTripDB,
+    SessionLocal,
+    SystemAIConfigDB,
+    User,
+    engine,
+)
 from ..services.auth_service import authenticate_user, hash_password
 
 
@@ -260,6 +268,99 @@ class AuditRecordAdmin(ModelView, model=AuditRecordDB):
     }
 
 
+class SystemAIConfigAdmin(ModelView, model=SystemAIConfigDB):
+    """Admin View for managing active AI engine, model lock, and quota limits."""
+    name = "AI 模型與配額控管"
+    name_plural = "AI 模型與配額控管"
+    icon = "fa-solid fa-sliders"
+    can_create = False
+    can_delete = False
+    can_edit = True
+
+    column_list = [
+        SystemAIConfigDB.id,
+        SystemAIConfigDB.active_engine,
+        SystemAIConfigDB.active_model,
+        SystemAIConfigDB.lock_model_for_non_admin,
+        SystemAIConfigDB.enable_fallback,
+        SystemAIConfigDB.daily_limit_per_user,
+        SystemAIConfigDB.monthly_limit_total,
+        SystemAIConfigDB.updated_by,
+        SystemAIConfigDB.updated_at,
+    ]
+    form_columns = [
+        SystemAIConfigDB.active_engine,
+        SystemAIConfigDB.active_model,
+        SystemAIConfigDB.lock_model_for_non_admin,
+        SystemAIConfigDB.enable_fallback,
+        SystemAIConfigDB.daily_limit_per_user,
+        SystemAIConfigDB.monthly_limit_total,
+    ]
+    column_labels = {
+        SystemAIConfigDB.id: "設定ID",
+        SystemAIConfigDB.active_engine: "預設 AI 引擎",
+        SystemAIConfigDB.active_model: "鎖定模型 ID",
+        SystemAIConfigDB.lock_model_for_non_admin: "鎖定非管理員自選",
+        SystemAIConfigDB.enable_fallback: "啟用限流自動備援",
+        SystemAIConfigDB.daily_limit_per_user: "每人每日 AI 上限 (0=無限制)",
+        SystemAIConfigDB.monthly_limit_total: "全公司每月 AI 總上限 (0=無限制)",
+        SystemAIConfigDB.updated_by: "最後更新者",
+        SystemAIConfigDB.updated_at: "更新時間",
+    }
+
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        if request is not None and request.session.get("admin_role") != "admin":
+            raise ValueError("僅系統管理員 (admin) 可修改全系統 AI 模型與配額設定")
+        if request is not None and request.session.get("admin_user"):
+            data["updated_by"] = request.session["admin_user"]
+
+
+class AIUsageLogAdmin(ModelView, model=AIUsageLogDB):
+    """Read-only audit log of AI extraction usage and quota enforcement."""
+    name = "AI 用量稽核紀錄"
+    name_plural = "AI 用量稽核紀錄"
+    icon = "fa-solid fa-chart-line"
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+    column_list = [
+        AIUsageLogDB.id,
+        AIUsageLogDB.user_email,
+        AIUsageLogDB.user_name,
+        AIUsageLogDB.engine,
+        AIUsageLogDB.model,
+        AIUsageLogDB.documents_count,
+        AIUsageLogDB.ai_calls_count,
+        AIUsageLogDB.qr_fast_decoded_count,
+        AIUsageLogDB.source,
+        AIUsageLogDB.status,
+        AIUsageLogDB.created_at,
+    ]
+    column_searchable_list = [AIUsageLogDB.user_email, AIUsageLogDB.user_name, AIUsageLogDB.model]
+    column_sortable_list = [AIUsageLogDB.id, AIUsageLogDB.ai_calls_count, AIUsageLogDB.created_at]
+    column_filters = [
+        AllUniqueStringValuesFilter(AIUsageLogDB.engine, title="AI 引擎"),
+        AllUniqueStringValuesFilter(AIUsageLogDB.model, title="實際模型"),
+        AllUniqueStringValuesFilter(AIUsageLogDB.status, title="執行狀態"),
+    ]
+    column_labels = {
+        AIUsageLogDB.id: "序號",
+        AIUsageLogDB.user_email: "同仁信箱",
+        AIUsageLogDB.user_name: "同仁姓名",
+        AIUsageLogDB.engine: "AI 引擎",
+        AIUsageLogDB.model: "實際模型",
+        AIUsageLogDB.documents_count: "送審單據數",
+        AIUsageLogDB.ai_calls_count: "AI 呼叫次數",
+        AIUsageLogDB.qr_fast_decoded_count: "離線 QR 略過數",
+        AIUsageLogDB.source: "來源",
+        AIUsageLogDB.status: "狀態",
+        AIUsageLogDB.created_at: "紀錄時間",
+    }
+
+
 def setup_admin(app):
     """Mount SQLAdmin onto the FastAPI application."""
     session_secret = os.getenv("ADMIN_SESSION_SECRET", "ai-invoice-auditor-admin-session-secret-key-2026")
@@ -274,4 +375,6 @@ def setup_admin(app):
     admin.add_view(UserAdmin)
     admin.add_view(ExpenseTripAdmin)
     admin.add_view(AuditRecordAdmin)
+    admin.add_view(SystemAIConfigAdmin)
+    admin.add_view(AIUsageLogAdmin)
     return admin

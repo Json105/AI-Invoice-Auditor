@@ -179,7 +179,7 @@
               </summary>
               <div class="advanced-settings-body">
                 <div class="command-toolbar">
-                  <div class="toolbar-left">
+                  <div id="admin-engine-controls" class="toolbar-left">
                     <div class="engine-badge-pill">
                       <span class="engine-pill-label">AI 解析引擎：</span>
                       <select id="engine-select" class="form-select-inline" onchange="onEngineChange()">
@@ -210,6 +210,13 @@
                       <button type="button" class="btn-icon-sm" onclick="toggleKeyVisibility()" title="顯示/隱藏">
                         <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                       </button>
+                    </div>
+                  </div>
+
+                  <div id="managed-ai-policy-banner" class="toolbar-left hidden">
+                    <div class="server-key-badge" style="display: inline-flex; align-items: center; gap: 0.45rem;">
+                      <span class="status-dot green" style="display:inline-block;"></span>
+                      <span id="managed-ai-policy-text">🔒 AI 智慧辨識服務已由系統管理員統一配置，直接上傳單據即可自動辨識與稽核</span>
                     </div>
                   </div>
 
@@ -920,6 +927,95 @@
                 </div>
                 <div class="sub-progress-track">
                   <div class="sub-progress-bar indigo" style="width: 14%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Admin AI Model Governance & Usage Quota Card -->
+            <div id="ai-governance-card" class="card storage-lifecycle-card" style="margin-top: 1.25rem;">
+              <div class="card-header-flex">
+                <div class="flex-align-center gap-2">
+                  <h3 class="card-title" style="font-size: 1rem;">
+                    🤖 全系統 AI 模型鎖定與用量配額控管 (Admin Governance)
+                  </h3>
+                  <span id="gov-lock-badge" class="badge-status badge-approved" style="font-size: 0.7rem;">已鎖定預設模型</span>
+                </div>
+                <div class="flex-align-center gap-2">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="loadAdminAiGovernance()">↻ 重新整理統計</button>
+                </div>
+              </div>
+
+              <div class="storage-stats-row" style="margin-bottom: 1rem;">
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">今日 AI 辨識次數</span>
+                  <span class="storage-kpi-val"><strong id="gov-kpi-today-calls">0</strong> 次</span>
+                </div>
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">本月 AI 辨識總量</span>
+                  <span class="storage-kpi-val"><strong id="gov-kpi-month-calls">0</strong> 次</span>
+                </div>
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">離線 QR 節省呼叫</span>
+                  <span class="storage-kpi-val"><strong id="gov-kpi-qr-saved">0</strong> 次</span>
+                </div>
+                <div class="storage-kpi-item">
+                  <span class="storage-kpi-label">目前全公司使用模型</span>
+                  <span class="storage-kpi-val" style="font-size: 0.85rem;"><strong id="gov-kpi-active-model">-</strong></span>
+                </div>
+              </div>
+
+              <form id="admin-ai-policy-form" onsubmit="return saveAdminAiPolicy(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem; align-items: end; padding: 0.85rem; background: var(--bg-subtle, #F8FAFC); border-radius: 10px; border: 1px solid var(--border-color, #E2E8F0);">
+                <div>
+                  <label class="text-xs text-subtle" for="gov-engine-select" style="display:block; margin-bottom:0.25rem;">預設 AI 解析引擎</label>
+                  <select id="gov-engine-select" class="form-select-inline" style="width:100%;" onchange="onGovEngineChange()">
+                    <option value="openrouter">OpenRouter (免費視覺 POC)</option>
+                    <option value="gemini">Gemini (雲端商業 API)</option>
+                    <option value="ollama">Ollama (地端離線)</option>
+                    <option value="mock">Mock (離線演示)</option>
+                  </select>
+                </div>
+                <div id="gov-openrouter-model-wrap">
+                  <label class="text-xs text-subtle" for="gov-openrouter-model-select" style="display:block; margin-bottom:0.25rem;">OpenRouter 預設模型</label>
+                  <select id="gov-openrouter-model-select" class="form-select-inline" style="width:100%;">
+                    <option value="google/gemma-4-31b-it:free">Google: Gemma 4 31B (free)</option>
+                  </select>
+                </div>
+                <div id="gov-custom-model-wrap" class="hidden">
+                  <label class="text-xs text-subtle" for="gov-custom-model-input" style="display:block; margin-bottom:0.25rem;">指定模型 ID</label>
+                  <input type="text" id="gov-custom-model-input" class="form-input-sm" style="width:100%;" placeholder="例如 gemini-3.7-flash" />
+                </div>
+                <div>
+                  <label class="text-xs text-subtle" for="gov-daily-limit" style="display:block; margin-bottom:0.25rem;">每人每日 AI 次數上限 (0=無限制)</label>
+                  <input type="number" id="gov-daily-limit" class="form-input-sm" style="width:100%;" min="0" value="0" />
+                </div>
+                <div>
+                  <label class="text-xs text-subtle" for="gov-monthly-limit" style="display:block; margin-bottom:0.25rem;">全公司每月 AI 總上限 (0=無限制)</label>
+                  <input type="number" id="gov-monthly-limit" class="form-input-sm" style="width:100%;" min="0" value="0" />
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                  <label class="ingestion-opt-item" style="font-size:0.8rem;">
+                    <input type="checkbox" id="gov-lock-non-admin" checked />
+                    <span>鎖定非 Admin 使用者模型（禁止自選與自填 Key）</span>
+                  </label>
+                  <label class="ingestion-opt-item" style="font-size:0.8rem;">
+                    <input type="checkbox" id="gov-enable-fallback" checked />
+                    <span>遇 HTTP 429 限流自動切換備援模型</span>
+                  </label>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:flex-end; gap:0.5rem;">
+                  <span id="gov-readonly-hint" class="text-xs text-subtle hidden">僅 admin 可儲存變更</span>
+                  <button type="submit" id="btn-save-ai-policy" class="btn btn-primary btn-sm">💾 儲存模型與配額策略</button>
+                </div>
+              </form>
+
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div>
+                  <div class="text-xs text-subtle" style="font-weight:600; margin-bottom:0.4rem;">各模型累計呼叫統計</div>
+                  <div id="gov-usage-by-model" class="text-xs text-subtle">載入中...</div>
+                </div>
+                <div>
+                  <div class="text-xs text-subtle" style="font-weight:600; margin-bottom:0.4rem;">同仁用量排行 (本月 / 今日)</div>
+                  <div id="gov-usage-by-user" class="text-xs text-subtle">載入中...</div>
                 </div>
               </div>
             </div>

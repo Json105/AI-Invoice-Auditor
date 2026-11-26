@@ -8,6 +8,7 @@ let selectedFiles = [];
 let currentSession = null;
 let serverHasKey = false;
 let serverHasOpenRouterKey = false;
+let serverAiPolicy = null;
 let activePreviewObjectUrl = null;
 
 function getAuthToken() {
@@ -138,6 +139,7 @@ function applyRolePermissions() {
       switchTab('audit');
     }
   }
+  applyAiPolicyUI();
 }
 
 async function onAuthenticatedSessionReady() {
@@ -449,7 +451,58 @@ async function handleChangePasswordSubmit(event) {
 
 
 
-// Load Server Configuration (Checks if GEMINI_API_KEY is preloaded in backend)
+// Load Server Configuration & Admin AI Policy
+function isAdminRole() {
+  return Boolean(currentUser && currentUser.role === 'admin');
+}
+
+function isModelLockedForCurrentUser() {
+  if (!serverAiPolicy) return false;
+  return Boolean(serverAiPolicy.lock_model_for_non_admin) && !isAdminRole();
+}
+
+function applyAiPolicyUI() {
+  const adminControls = document.getElementById('admin-engine-controls');
+  const managedBanner = document.getElementById('managed-ai-policy-banner');
+  const managedText = document.getElementById('managed-ai-policy-text');
+  const engineHint = document.getElementById('engine-hint');
+  const badgeLabel = document.getElementById('engine-badge-label');
+  const engineSelect = document.getElementById('engine-select');
+  const orSelect = document.getElementById('openrouter-model-select');
+
+  if (serverAiPolicy && engineSelect) {
+    const policyEngine = serverAiPolicy.active_engine;
+    if (policyEngine && Array.from(engineSelect.options).some(o => o.value === policyEngine)) {
+      engineSelect.value = policyEngine;
+    }
+    if (orSelect && policyEngine === 'openrouter' && serverAiPolicy.active_model) {
+      if (Array.from(orSelect.options).some(o => o.value === serverAiPolicy.active_model)) {
+        orSelect.value = serverAiPolicy.active_model;
+      }
+    }
+  } else if (engineSelect && serverHasOpenRouterKey && !serverHasKey) {
+    engineSelect.value = 'openrouter';
+  }
+
+  onEngineChange();
+
+  if (isModelLockedForCurrentUser()) {
+    if (adminControls) adminControls.classList.add('hidden');
+    if (engineHint) engineHint.classList.add('hidden');
+    if (managedBanner) managedBanner.classList.remove('hidden');
+    if (badgeLabel) badgeLabel.textContent = '管理員統一配置';
+    if (managedText && serverAiPolicy) {
+      const dailyLimit = Number(serverAiPolicy.daily_limit_per_user || 0);
+      const quotaHint = dailyLimit > 0 ? `（每人每日上限 ${dailyLimit} 次）` : '';
+      managedText.textContent = `🔒 AI 智慧辨識服務已由管理員統一配置${quotaHint}，直接上傳單據即可自動辨識`;
+    }
+  } else {
+    if (adminControls) adminControls.classList.remove('hidden');
+    if (engineHint) engineHint.classList.remove('hidden');
+    if (managedBanner) managedBanner.classList.add('hidden');
+  }
+}
+
 async function loadServerConfig() {
   try {
     const res = await fetch('/api/config');
@@ -457,18 +510,18 @@ async function loadServerConfig() {
     const cfg = await res.json();
     serverHasKey = Boolean(cfg.has_server_api_key);
     serverHasOpenRouterKey = Boolean(cfg.has_openrouter_api_key);
+    serverAiPolicy = cfg.ai_policy || null;
 
     const orSelect = document.getElementById('openrouter-model-select');
-    if (orSelect && Array.isArray(cfg.openrouter_models) && cfg.openrouter_models.length > 0) {
-      orSelect.innerHTML = cfg.openrouter_models.map(m => (
+    const govOrSelect = document.getElementById('gov-openrouter-model-select');
+    if (Array.isArray(cfg.openrouter_models) && cfg.openrouter_models.length > 0) {
+      const optionsHtml = cfg.openrouter_models.map(m => (
         `<option value="${escapeHtml(m.id)}" ${m.id === cfg.default_openrouter_model ? 'selected' : ''}>${escapeHtml(m.label)}</option>`
       )).join('');
+      if (orSelect) orSelect.innerHTML = optionsHtml;
+      if (govOrSelect) govOrSelect.innerHTML = optionsHtml;
     }
-    const engineSelect = document.getElementById('engine-select');
-    if (engineSelect && serverHasOpenRouterKey && !serverHasKey) {
-      engineSelect.value = 'openrouter';
-    }
-    onEngineChange();
+    applyAiPolicyUI();
   } catch (e) {
     console.error("Failed to load server config", e);
   }
@@ -500,6 +553,7 @@ function switchTab(tabName) {
     document.getElementById('tab-analytics').classList.add('active');
     initAnalyticsDashboard();
     loadStorageStats();
+    loadAdminAiGovernance();
   } else if (tabName === 'history') {
     document.getElementById('tab-history-btn').classList.add('active');
     document.getElementById('tab-history').classList.add('active');
@@ -535,11 +589,16 @@ async function scanWatchFolder() {
     return;
   }
   const btn = document.getElementById('btn-watch-scan');
-  const engine = document.getElementById('engine-select')?.value || 'mock';
-  const apiKey = document.getElementById('api-key-input')?.value?.trim() || null;
-  const selectedModel = engine === 'openrouter'
-    ? (document.getElementById('openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
-    : null;
+  const lockedByPolicy = isModelLockedForCurrentUser();
+  const engine = lockedByPolicy
+    ? (serverAiPolicy?.active_engine || 'openrouter')
+    : (document.getElementById('engine-select')?.value || 'mock');
+  const apiKey = lockedByPolicy ? null : (document.getElementById('api-key-input')?.value?.trim() || null);
+  const selectedModel = lockedByPolicy
+    ? (serverAiPolicy?.active_model || null)
+    : (engine === 'openrouter'
+      ? (document.getElementById('openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
+      : null);
   const splitPdf = document.getElementById('split-pdf-cb')?.checked ?? true;
   const multiReceipt = document.getElementById('multi-receipt-cb')?.checked ?? false;
   const fxMode = document.getElementById('fx-mode-select')?.value || 'auto_bot';
@@ -784,8 +843,11 @@ async function startAudit() {
     return;
   }
 
-  const engine = document.getElementById('engine-select').value;
-  const apiKey = document.getElementById('api-key-input').value.trim();
+  const lockedByPolicy = isModelLockedForCurrentUser();
+  const engine = lockedByPolicy
+    ? (serverAiPolicy?.active_engine || 'openrouter')
+    : document.getElementById('engine-select').value;
+  const apiKey = lockedByPolicy ? '' : document.getElementById('api-key-input').value.trim();
   const applyTemplate = document.getElementById('apply-template-cb').checked;
   const splitPdf = document.getElementById('split-pdf-cb')?.checked ?? true;
   const multiReceipt = document.getElementById('multi-receipt-cb')?.checked ?? false;
@@ -801,24 +863,28 @@ async function startAudit() {
     return;
   }
 
-  if (engine === 'gemini') {
-    if (!apiKey && !serverHasKey) {
-      alert('請輸入 Gemini API Key，或於伺服器端環境設定 GEMINI_API_KEY！\n（若想快速測試，可切換至「OpenRouter 免費視覺模型」或「離線展示模式」）');
-      document.getElementById('api-key-input').focus();
-      return;
+  if (!lockedByPolicy) {
+    if (engine === 'gemini') {
+      if (!apiKey && !serverHasKey) {
+        alert('請輸入 Gemini API Key，或於伺服器端環境設定 GEMINI_API_KEY！\n（若想快速測試，可切換至「OpenRouter 免費視覺模型」或「離線展示模式」）');
+        document.getElementById('api-key-input').focus();
+        return;
+      }
+      if (apiKey) localStorage.setItem('gemini_api_key', apiKey);
+    } else if (engine === 'openrouter') {
+      if (!apiKey && !serverHasOpenRouterKey) {
+        alert('請輸入 OpenRouter API Key (sk-or-...)，或於伺服器端設定 OPENROUTER_API_KEY！');
+        document.getElementById('api-key-input').focus();
+        return;
+      }
+      if (apiKey) localStorage.setItem('openrouter_api_key', apiKey);
     }
-    if (apiKey) localStorage.setItem('gemini_api_key', apiKey);
-  } else if (engine === 'openrouter') {
-    if (!apiKey && !serverHasOpenRouterKey) {
-      alert('請輸入 OpenRouter API Key (sk-or-...)，或於伺服器端設定 OPENROUTER_API_KEY！');
-      document.getElementById('api-key-input').focus();
-      return;
-    }
-    if (apiKey) localStorage.setItem('openrouter_api_key', apiKey);
   }
-  const selectedModel = engine === 'openrouter'
-    ? (document.getElementById('openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
-    : '';
+  const selectedModel = lockedByPolicy
+    ? (serverAiPolicy?.active_model || '')
+    : (engine === 'openrouter'
+      ? (document.getElementById('openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
+      : '');
 
   // Prepare file chunks so large 50-200+ uploads never hit HTTP timeouts
   const chunks = [];
@@ -2910,6 +2976,169 @@ async function handleFxEditSubmit(event) {
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
+}
+
+// ==========================================================================
+// ADMIN AI GOVERNANCE & QUOTA USAGE CONTROLLER
+// ==========================================================================
+
+function onGovEngineChange() {
+  const engine = document.getElementById('gov-engine-select')?.value || 'openrouter';
+  const orWrap = document.getElementById('gov-openrouter-model-wrap');
+  const customWrap = document.getElementById('gov-custom-model-wrap');
+  const customInput = document.getElementById('gov-custom-model-input');
+  if (engine === 'openrouter') {
+    if (orWrap) orWrap.classList.remove('hidden');
+    if (customWrap) customWrap.classList.add('hidden');
+  } else {
+    if (orWrap) orWrap.classList.add('hidden');
+    if (customWrap) customWrap.classList.remove('hidden');
+    if (customInput && !customInput.value.trim()) {
+      if (engine === 'gemini') customInput.value = 'gemini-3.7-flash';
+      else if (engine === 'ollama') customInput.value = 'llama3.2-vision:latest';
+      else customInput.value = 'mock';
+    }
+  }
+}
+
+async function loadAdminAiGovernance() {
+  if (!getAuthToken() || !isPrivilegedRole()) return;
+  try {
+    const [resPolicy, resUsage] = await Promise.all([
+      authFetch('/api/admin/ai-policy'),
+      authFetch('/api/admin/ai-usage')
+    ]);
+    if (resPolicy.ok) {
+      const pData = await resPolicy.json();
+      const policy = pData.policy || {};
+      serverAiPolicy = policy;
+      const canEdit = Boolean(pData.can_edit);
+
+      const engEl = document.getElementById('gov-engine-select');
+      const orSel = document.getElementById('gov-openrouter-model-select');
+      const custIn = document.getElementById('gov-custom-model-input');
+      const dailyIn = document.getElementById('gov-daily-limit');
+      const monthIn = document.getElementById('gov-monthly-limit');
+      const lockCb = document.getElementById('gov-lock-non-admin');
+      const fbCb = document.getElementById('gov-enable-fallback');
+      const lockBadge = document.getElementById('gov-lock-badge');
+      const saveBtn = document.getElementById('btn-save-ai-policy');
+      const roHint = document.getElementById('gov-readonly-hint');
+
+      if (engEl && policy.active_engine) engEl.value = policy.active_engine;
+      if (orSel && Array.isArray(pData.openrouter_models)) {
+        orSel.innerHTML = pData.openrouter_models.map(m => (
+          `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label)}</option>`
+        )).join('');
+        if (policy.active_engine === 'openrouter' && policy.active_model) {
+          orSel.value = policy.active_model;
+        }
+      }
+      if (custIn && policy.active_engine !== 'openrouter') {
+        custIn.value = policy.active_model || '';
+      }
+      onGovEngineChange();
+      if (dailyIn) dailyIn.value = Number(policy.daily_limit_per_user || 0);
+      if (monthIn) monthIn.value = Number(policy.monthly_limit_total || 0);
+      if (lockCb) lockCb.checked = Boolean(policy.lock_model_for_non_admin);
+      if (fbCb) fbCb.checked = Boolean(policy.enable_fallback);
+      if (lockBadge) {
+        lockBadge.textContent = policy.lock_model_for_non_admin ? '已鎖定非 Admin 自選' : '允許同仁自選模型';
+      }
+
+      [engEl, orSel, custIn, dailyIn, monthIn, lockCb, fbCb].forEach(el => {
+        if (el) el.disabled = !canEdit;
+      });
+      if (saveBtn) saveBtn.classList.toggle('hidden', !canEdit);
+      if (roHint) roHint.classList.toggle('hidden', canEdit);
+      applyAiPolicyUI();
+    }
+
+    if (resUsage.ok) {
+      const uData = await resUsage.json();
+      const tCalls = document.getElementById('gov-kpi-today-calls');
+      const mCalls = document.getElementById('gov-kpi-month-calls');
+      const qrSaved = document.getElementById('gov-kpi-qr-saved');
+      const activeMod = document.getElementById('gov-kpi-active-model');
+      if (tCalls) tCalls.textContent = String(uData.today_ai_calls || 0);
+      if (mCalls) mCalls.textContent = String(uData.month_ai_calls || 0);
+      if (qrSaved) qrSaved.textContent = String(uData.total_qr_saved || 0);
+      if (activeMod && uData.policy) {
+        activeMod.textContent = `${uData.policy.active_engine} / ${uData.policy.active_model}`;
+      }
+
+      const byModelEl = document.getElementById('gov-usage-by-model');
+      if (byModelEl) {
+        const items = uData.by_model || [];
+        byModelEl.innerHTML = items.length === 0
+          ? '<span class="text-subtle">尚無 AI 辨識紀錄</span>'
+          : items.map(m => (
+              `<div style="display:flex; justify-content:space-between; padding:0.25rem 0; border-bottom:1px dashed #E2E8F0;">` +
+              `<span><code>${escapeHtml(m.engine)}</code> · ${escapeHtml(m.model)}</span>` +
+              `<strong>${m.ai_calls} 次 (${m.documents} 份)</strong></div>`
+            )).join('');
+      }
+
+      const byUserEl = document.getElementById('gov-usage-by-user');
+      if (byUserEl) {
+        const users = uData.by_user || [];
+        byUserEl.innerHTML = users.length === 0
+          ? '<span class="text-subtle">尚無同仁呼叫紀錄</span>'
+          : users.map(u => (
+              `<div style="display:flex; justify-content:space-between; padding:0.25rem 0; border-bottom:1px dashed #E2E8F0;">` +
+              `<span>${escapeHtml(u.user_name)} <small>(${escapeHtml(u.user_email)})</small></span>` +
+              `<strong>本月 ${u.month_calls} / 今日 ${u.today_calls} 次</strong></div>`
+            )).join('');
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load admin AI governance:', e);
+  }
+}
+
+async function saveAdminAiPolicy(event) {
+  if (event) event.preventDefault();
+  if (!isAdminRole()) {
+    alert('僅系統管理員 (admin) 可修改全系統 AI 模型與配額設定');
+    return false;
+  }
+
+  const engine = document.getElementById('gov-engine-select')?.value || 'openrouter';
+  const model = engine === 'openrouter'
+    ? (document.getElementById('gov-openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
+    : (document.getElementById('gov-custom-model-input')?.value?.trim() || '');
+  const dailyLimit = parseInt(document.getElementById('gov-daily-limit')?.value || '0', 10) || 0;
+  const monthlyLimit = parseInt(document.getElementById('gov-monthly-limit')?.value || '0', 10) || 0;
+  const lockNonAdmin = Boolean(document.getElementById('gov-lock-non-admin')?.checked);
+  const enableFallback = Boolean(document.getElementById('gov-enable-fallback')?.checked);
+  const btn = document.getElementById('btn-save-ai-policy');
+
+  if (btn) btn.disabled = true;
+  try {
+    const res = await authFetch('/api/admin/ai-policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        active_engine: engine,
+        active_model: model,
+        enable_fallback: enableFallback,
+        lock_model_for_non_admin: lockNonAdmin,
+        daily_limit_per_user: Math.max(0, dailyLimit),
+        monthly_limit_total: Math.max(0, monthlyLimit)
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '更新失敗');
+    serverAiPolicy = data.policy;
+    applyAiPolicyUI();
+    await loadAdminAiGovernance();
+    alert(`已儲存全系統 AI 策略：${serverAiPolicy.active_engine} / ${serverAiPolicy.active_model}`);
+  } catch (e) {
+    alert(`儲存 AI 策略失敗: ${e.message}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  return false;
 }
 
 

@@ -80,6 +80,7 @@ class OpenRouterExtractor(BaseInvoiceExtractor):
     ):
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         self.model = (model or "").strip() or DEFAULT_OPENROUTER_MODEL
+        self.last_used_model: str = self.model
         self.base_url = (base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")).rstrip("/")
         self.enable_fallback = enable_fallback
 
@@ -187,6 +188,7 @@ class OpenRouterExtractor(BaseInvoiceExtractor):
             try:
                 text_out = self._extract_message_text(response.json())
                 json.loads(text_out)
+                self.last_used_model = candidate_model
                 return text_out
             except Exception as exc:
                 last_error = exc

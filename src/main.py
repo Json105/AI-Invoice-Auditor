@@ -24,14 +24,19 @@ from .extractors.ollama_extractor import OllamaExtractor
 from .extractors.openrouter_extractor import DEFAULT_OPENROUTER_MODEL, OpenRouterExtractor
 
 
-def get_extractor(engine: str, api_key: str = None, model: str = DEFAULT_GEMINI_MODEL):
+def get_extractor(
+    engine: str,
+    api_key: str = None,
+    model: str = DEFAULT_GEMINI_MODEL,
+    enable_fallback: bool = True,
+):
     """Factory to instantiate the selected extractor."""
     engine_lower = engine.lower()
     if engine_lower == "gemini":
         return GeminiExtractor(api_key=api_key, model=model)
     elif engine_lower == "openrouter":
         resolved_model = model if (model and model != DEFAULT_GEMINI_MODEL) else DEFAULT_OPENROUTER_MODEL
-        return OpenRouterExtractor(api_key=api_key, model=resolved_model)
+        return OpenRouterExtractor(api_key=api_key, model=resolved_model, enable_fallback=enable_fallback)
     elif engine_lower == "ollama":
         return OllamaExtractor(model="llama3.2-vision:latest")
     elif engine_lower == "mock":

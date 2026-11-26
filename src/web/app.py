@@ -19,6 +19,7 @@ load_env_file()
 
 from .routes import router
 from ..database import init_db, DEFAULT_DB_PATH
+from ..services.ai_policy import get_system_ai_config
 from ..services.watch_folder import watch_folder_service
 
 logger = logging.getLogger(__name__)
@@ -26,15 +27,16 @@ logger = logging.getLogger(__name__)
 
 async def _watch_folder_poll_loop(interval_seconds: int) -> None:
     """Optional background polling loop when WATCH_FOLDER_AUTO_POLL_SECONDS > 0."""
-    fallback_engine = (
-        "gemini"
-        if os.getenv("GEMINI_API_KEY")
-        else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "mock")
-    )
-    engine = os.getenv("WATCH_FOLDER_ENGINE", fallback_engine)
     while True:
         try:
-            watch_folder_service.scan_and_ingest(engine=engine, is_privileged=True)
+            policy = get_system_ai_config()
+            engine = os.getenv("WATCH_FOLDER_ENGINE", policy["active_engine"])
+            watch_folder_service.scan_and_ingest(
+                engine=engine,
+                model=policy["active_model"],
+                enable_fallback=policy["enable_fallback"],
+                is_privileged=True,
+            )
         except Exception as exc:
             logger.warning("Watch folder background scan skipped: %s", exc)
         await asyncio.sleep(interval_seconds)

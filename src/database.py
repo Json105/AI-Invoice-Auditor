@@ -121,6 +121,45 @@ class AuditRecordDB(Base):
         return f"<AuditRecord {self.invoice_number or self.id} [{self.audit_status} / {self.approval_status}]>"
 
 
+class SystemAIConfigDB(Base):
+    """Singleton system-wide AI engine, model lock, and quota configuration."""
+    __tablename__ = "system_ai_config"
+
+    id = Column(Integer, primary_key=True, default=1)
+    active_engine = Column(String(40), default="openrouter", nullable=False)
+    active_model = Column(String(120), default="google/gemma-4-31b-it:free", nullable=False)
+    enable_fallback = Column(Boolean, default=True, nullable=False)
+    lock_model_for_non_admin = Column(Boolean, default=True, nullable=False)
+    daily_limit_per_user = Column(Integer, default=0, nullable=False)
+    monthly_limit_total = Column(Integer, default=0, nullable=False)
+    updated_by = Column(String(255), default="system", nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<SystemAIConfig engine={self.active_engine} model={self.active_model} locked={self.lock_model_for_non_admin}>"
+
+
+class AIUsageLogDB(Base):
+    """Audit trail of AI inference calls and quota checks per user and model."""
+    __tablename__ = "ai_usage_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=True)
+    user_email = Column(String(255), nullable=False, default="system")
+    user_name = Column(String(100), nullable=False, default="System")
+    engine = Column(String(40), index=True, nullable=False)
+    model = Column(String(120), index=True, nullable=False)
+    documents_count = Column(Integer, default=0, nullable=False)
+    ai_calls_count = Column(Integer, default=0, nullable=False)
+    qr_fast_decoded_count = Column(Integer, default=0, nullable=False)
+    source = Column(String(40), default="web_audit", nullable=False)
+    status = Column(String(30), default="success", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def __repr__(self):
+        return f"<AIUsageLog {self.user_email} {self.engine}/{self.model} calls={self.ai_calls_count} [{self.status}]>"
+
+
 def get_db():
     """FastAPI Dependency for database session."""
     db = SessionLocal()
@@ -166,6 +205,37 @@ def seed_default_users(db: Session) -> None:
         ]
         db.add_all(demo_users)
         db.commit()
+
+
+def seed_default_ai_config(db: Session) -> None:
+    """Seed singleton AI governance policy based on server environment keys."""
+    if db.query(SystemAIConfigDB).filter(SystemAIConfigDB.id == 1).first() is not None:
+        return
+
+    if os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
+        default_engine = "openrouter"
+        default_model = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+    elif os.getenv("GEMINI_API_KEY"):
+        default_engine = "gemini"
+        default_model = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+    else:
+        default_engine = "mock"
+        default_model = "mock"
+
+    db.add(
+        SystemAIConfigDB(
+            id=1,
+            active_engine=default_engine,
+            active_model=default_model,
+            enable_fallback=True,
+            lock_model_for_non_admin=True,
+            daily_limit_per_user=0,
+            monthly_limit_total=0,
+            updated_by="system",
+            updated_at=datetime.utcnow(),
+        )
+    )
+    db.commit()
 
 
 def get_db_connection(db_path: Union[str, Path] = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -226,11 +296,13 @@ def init_db(db_path: Union[str, Path] = DEFAULT_DB_PATH) -> None:
         TargetSession = sessionmaker(bind=target_engine)
         with TargetSession() as session:
             seed_default_users(session)
+            seed_default_ai_config(session)
     else:
         Base.metadata.create_all(bind=engine)
         _ensure_audit_columns(path)
         with SessionLocal() as session:
             seed_default_users(session)
+            seed_default_ai_config(session)
 
 
 def is_invoice_seen(invoice_number: Optional[str], db_path: Union[str, Path] = DEFAULT_DB_PATH) -> bool:

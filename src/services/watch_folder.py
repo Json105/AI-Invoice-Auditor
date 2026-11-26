@@ -145,6 +145,7 @@ class WatchFolderService:
         db_path: Path = DEFAULT_DB_PATH,
         uploads_dir: Path = Path("data/uploads"),
         is_privileged: bool = False,
+        enable_fallback: bool = True,
     ) -> Dict[str, Any]:
         """Scan inbox directory once, process every pending document, and move to processed/failed."""
         inbox_dir = Path(watch_dir) if watch_dir else self.watch_dir
@@ -162,10 +163,11 @@ class WatchFolderService:
                     "warning": 0,
                     "rejected": 0,
                     "trip_id": trip_id,
+                    "actual_model": model,
                     "reports": [],
                 }
 
-            extractor = get_extractor(engine, api_key=api_key, model=model)
+            extractor = get_extractor(engine, api_key=api_key, model=model, enable_fallback=enable_fallback)
             owner_id = user.id if user else 1
             owner_name = user.full_name if user else "自動監控資料夾"
             owner_email = user.email if user else "scanner@company.local"
@@ -255,6 +257,12 @@ class WatchFolderService:
                     item["preview_token"] = token
                 reports_payload.append(item)
 
+            actual_model = (
+                getattr(extractor, "last_used_model", None)
+                or getattr(extractor, "model", None)
+                or model
+            )
+
             return {
                 "watch_dir": str(inbox_dir),
                 "scanned_files_count": scanned_files_count,
@@ -265,6 +273,7 @@ class WatchFolderService:
                 "warning": warning,
                 "rejected": rejected,
                 "trip_id": trip_id,
+                "actual_model": actual_model,
                 "reports": reports_payload,
             }
 

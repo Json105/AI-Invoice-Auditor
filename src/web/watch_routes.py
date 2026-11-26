@@ -7,6 +7,12 @@ from pydantic import BaseModel, Field
 
 from ..database import DEFAULT_DB_PATH, User, get_expense_trip_by_id
 from ..extractors.gemini_extractor import DEFAULT_GEMINI_MODEL
+from ..services.ai_policy import (
+    QuotaExceededError,
+    check_ai_quota,
+    record_ai_usage,
+    resolve_effective_ai_execution,
+)
 from ..services.watch_folder import watch_folder_service
 from .auth_routes import get_current_user_required, is_privileged_user
 
@@ -48,18 +54,57 @@ async def trigger_watch_folder_scan(
         if (trip.get("status") or "").upper() in ("PAID", "REJECTED"):
             raise HTTPException(status_code=400, detail="此出差專案已撥款結案或駁回，無法再匯入單據")
 
+    effective_ai = resolve_effective_ai_execution(
+        user=current_user,
+        requested_engine=cfg.engine,
+        requested_model=cfg.model,
+        requested_api_key=cfg.api_key,
+    )
+
+    pending_count = int(watch_folder_service.get_status().get("pending_count") or 0)
+    if pending_count > 0:
+        try:
+            check_ai_quota(current_user, requested_units=pending_count, source="watch_folder")
+        except QuotaExceededError as exc:
+            raise HTTPException(status_code=429, detail=str(exc))
+
     try:
-        return watch_folder_service.scan_and_ingest(
+        result = watch_folder_service.scan_and_ingest(
             user=current_user,
-            engine=cfg.engine,
-            api_key=cfg.api_key,
-            model=cfg.model,
+            engine=effective_ai["engine"],
+            api_key=effective_ai["api_key"],
+            model=effective_ai["model"],
             trip_id=cfg.trip_id,
             split_pdf=cfg.split_pdf,
             multi_receipt=cfg.multi_receipt,
             fx_mode=cfg.fx_mode,
             manual_exchange_rate=cfg.manual_exchange_rate,
             is_privileged=is_privileged_user(current_user),
+            enable_fallback=effective_ai["enable_fallback"],
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"掃描匯入失敗: {str(exc)}")
+
+    actual_model = result.get("actual_model") or effective_ai["model"]
+    if result.get("scanned_files_count", 0) > 0:
+        ai_calls = max(0, int(result.get("expanded_pages_count", 0)) - int(result.get("qr_fast_decoded_count", 0)))
+        try:
+            record_ai_usage(
+                user=current_user,
+                engine=effective_ai["engine"],
+                model=actual_model,
+                documents_count=int(result.get("expanded_pages_count", 0)),
+                ai_calls_count=ai_calls,
+                qr_fast_decoded_count=int(result.get("qr_fast_decoded_count", 0)),
+                source="watch_folder",
+                status="success",
+            )
+        except Exception:
+            pass
+
+    result["ai_execution"] = {
+        "engine": effective_ai["engine"],
+        "model": actual_model,
+        "policy_locked": effective_ai["policy_locked"],
+    }
+    return result
