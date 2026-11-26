@@ -7,6 +7,7 @@
 let selectedFiles = [];
 let currentSession = null;
 let serverHasKey = false;
+let serverHasOpenRouterKey = false;
 let activePreviewObjectUrl = null;
 
 function getAuthToken() {
@@ -454,21 +455,16 @@ async function loadServerConfig() {
     const res = await fetch('/api/config');
     if (!res.ok) return;
     const cfg = await res.json();
-    serverHasKey = cfg.has_server_api_key;
-    const serverBadge = document.getElementById('server-key-badge');
-    const apiKeyInput = document.getElementById('api-key-input');
-    const apiKeyHint = document.getElementById('api-key-hint');
-    const badgeLabel = document.getElementById('engine-badge-label');
+    serverHasKey = Boolean(cfg.has_server_api_key);
+    serverHasOpenRouterKey = Boolean(cfg.has_openrouter_api_key);
 
-    if (serverHasKey) {
-      if (serverBadge) serverBadge.classList.remove('hidden');
-      if (apiKeyInput) apiKeyInput.placeholder = '伺服器已預設 API Key（免手動填寫，可直接辨識）';
-      if (apiKeyHint) apiKeyHint.textContent = '🟢 伺服器端已連線 GEMINI_API_KEY，同仁免輸金鑰。';
-      if (badgeLabel) badgeLabel.textContent = 'Gemini 雲端';
-    } else {
-      if (serverBadge) serverBadge.classList.add('hidden');
-      if (badgeLabel) badgeLabel.textContent = 'Gemini 雲端';
+    const orSelect = document.getElementById('openrouter-model-select');
+    if (orSelect && Array.isArray(cfg.openrouter_models) && cfg.openrouter_models.length > 0) {
+      orSelect.innerHTML = cfg.openrouter_models.map(m => (
+        `<option value="${escapeHtml(m.id)}" ${m.id === cfg.default_openrouter_model ? 'selected' : ''}>${escapeHtml(m.label)}</option>`
+      )).join('');
     }
+    onEngineChange();
   } catch (e) {
     console.error("Failed to load server config", e);
   }
@@ -537,6 +533,9 @@ async function scanWatchFolder() {
   const btn = document.getElementById('btn-watch-scan');
   const engine = document.getElementById('engine-select')?.value || 'mock';
   const apiKey = document.getElementById('api-key-input')?.value?.trim() || null;
+  const selectedModel = engine === 'openrouter'
+    ? (document.getElementById('openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
+    : null;
   const splitPdf = document.getElementById('split-pdf-cb')?.checked ?? true;
   const multiReceipt = document.getElementById('multi-receipt-cb')?.checked ?? false;
   const fxMode = document.getElementById('fx-mode-select')?.value || 'auto_bot';
@@ -553,6 +552,7 @@ async function scanWatchFolder() {
       body: JSON.stringify({
         engine,
         api_key: apiKey,
+        ...(selectedModel ? { model: selectedModel } : {}),
         split_pdf: splitPdf,
         multi_receipt: multiReceipt,
         fx_mode: fxMode,
@@ -594,19 +594,46 @@ async function scanWatchFolder() {
 function onEngineChange() {
   const engine = document.getElementById('engine-select').value;
   const keyGroup = document.getElementById('gemini-key-group');
+  const orModelGroup = document.getElementById('openrouter-model-group');
+  const serverBadge = document.getElementById('server-key-badge');
+  const apiKeyInput = document.getElementById('api-key-input');
   const engineHint = document.getElementById('engine-hint');
   const badgeLabel = document.getElementById('engine-badge-label');
 
   if (engine === 'gemini') {
+    if (orModelGroup) orModelGroup.classList.add('hidden');
     if (keyGroup) keyGroup.classList.remove('hidden');
+    if (serverBadge) serverBadge.classList.toggle('hidden', !serverHasKey);
+    if (apiKeyInput) {
+      apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+      apiKeyInput.placeholder = serverHasKey
+        ? '伺服器已預設 API Key（免手動填寫，可直接辨識）'
+        : '輸入 Gemini API Key (選填)...';
+    }
     if (engineHint) engineHint.textContent = '採用 Google 雲端多模態視覺模型，辨識速度 1~2 秒，跨國多幣別理解力最強。';
     if (badgeLabel) badgeLabel.textContent = 'Gemini 雲端';
+  } else if (engine === 'openrouter') {
+    if (orModelGroup) orModelGroup.classList.remove('hidden');
+    if (keyGroup) keyGroup.classList.remove('hidden');
+    if (serverBadge) serverBadge.classList.toggle('hidden', !serverHasOpenRouterKey);
+    if (apiKeyInput) {
+      apiKeyInput.value = localStorage.getItem('openrouter_api_key') || '';
+      apiKeyInput.placeholder = serverHasOpenRouterKey
+        ? '伺服器已預設 OpenRouter Key（可直接辨識）'
+        : '輸入 OpenRouter API Key (sk-or-...)';
+    }
+    if (engineHint) engineHint.textContent = '免費視覺模型 POC 模式：首選 Gemma 4 31B，遇到 HTTP 429 限流自動切換備援模型。';
+    if (badgeLabel) badgeLabel.textContent = 'OpenRouter 免費視覺';
   } else if (engine === 'ollama') {
+    if (orModelGroup) orModelGroup.classList.add('hidden');
     if (keyGroup) keyGroup.classList.add('hidden');
+    if (serverBadge) serverBadge.classList.add('hidden');
     if (engineHint) engineHint.textContent = '連線本機 Ollama 視覺模型 (llama3.2-vision)，單據完全不出企業內網。';
     if (badgeLabel) badgeLabel.textContent = 'Ollama 地端離線';
   } else {
+    if (orModelGroup) orModelGroup.classList.add('hidden');
     if (keyGroup) keyGroup.classList.add('hidden');
+    if (serverBadge) serverBadge.classList.add('hidden');
     if (engineHint) engineHint.textContent = '無需 API Key，支援示範中國發票、泰國 Grab、歐洲飯店與高鐵票。';
     if (badgeLabel) badgeLabel.textContent = 'Mock 離線演示';
   }
@@ -772,12 +799,22 @@ async function startAudit() {
 
   if (engine === 'gemini') {
     if (!apiKey && !serverHasKey) {
-      alert('請輸入 Gemini API Key，或於伺服器端環境設定 GEMINI_API_KEY！\n（若想快速測試，可切換至「離線展示模式」）');
+      alert('請輸入 Gemini API Key，或於伺服器端環境設定 GEMINI_API_KEY！\n（若想快速測試，可切換至「OpenRouter 免費視覺模型」或「離線展示模式」）');
       document.getElementById('api-key-input').focus();
       return;
     }
     if (apiKey) localStorage.setItem('gemini_api_key', apiKey);
+  } else if (engine === 'openrouter') {
+    if (!apiKey && !serverHasOpenRouterKey) {
+      alert('請輸入 OpenRouter API Key (sk-or-...)，或於伺服器端設定 OPENROUTER_API_KEY！');
+      document.getElementById('api-key-input').focus();
+      return;
+    }
+    if (apiKey) localStorage.setItem('openrouter_api_key', apiKey);
   }
+  const selectedModel = engine === 'openrouter'
+    ? (document.getElementById('openrouter-model-select')?.value || 'google/gemma-4-31b-it:free')
+    : '';
 
   // Prepare file chunks so large 50-200+ uploads never hit HTTP timeouts
   const chunks = [];
@@ -833,6 +870,7 @@ async function startAudit() {
       });
       formData.append('engine', engine);
       if (apiKey) formData.append('api_key', apiKey);
+      if (selectedModel) formData.append('model', selectedModel);
       formData.append('apply_template', applyTemplate ? 'true' : 'false');
       formData.append('split_pdf', splitPdf ? 'true' : 'false');
       formData.append('multi_receipt', multiReceipt ? 'true' : 'false');

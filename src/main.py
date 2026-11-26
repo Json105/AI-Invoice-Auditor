@@ -16,6 +16,7 @@ from .template_exporter import TemplateExpenseExporter
 from .extractors.mock_extractor import MockExtractor
 from .extractors.gemini_extractor import DEFAULT_GEMINI_MODEL, GeminiExtractor
 from .extractors.ollama_extractor import OllamaExtractor
+from .extractors.openrouter_extractor import DEFAULT_OPENROUTER_MODEL, OpenRouterExtractor
 
 
 def get_extractor(engine: str, api_key: str = None, model: str = DEFAULT_GEMINI_MODEL):
@@ -23,12 +24,15 @@ def get_extractor(engine: str, api_key: str = None, model: str = DEFAULT_GEMINI_
     engine_lower = engine.lower()
     if engine_lower == "gemini":
         return GeminiExtractor(api_key=api_key, model=model)
+    elif engine_lower == "openrouter":
+        resolved_model = model if (model and model != DEFAULT_GEMINI_MODEL) else DEFAULT_OPENROUTER_MODEL
+        return OpenRouterExtractor(api_key=api_key, model=resolved_model)
     elif engine_lower == "ollama":
         return OllamaExtractor(model="llama3.2-vision:latest")
     elif engine_lower == "mock":
         return MockExtractor()
     else:
-        raise ValueError(f"Unknown extractor engine: '{engine}'. Choices: [gemini, ollama, mock]")
+        raise ValueError(f"Unknown extractor engine: '{engine}'. Choices: [gemini, openrouter, ollama, mock]")
 
 
 def run_pipeline(
@@ -148,19 +152,19 @@ def main():
     )
     parser.add_argument(
         "-e", "--engine",
-        choices=["gemini", "ollama", "mock"],
+        choices=["gemini", "openrouter", "ollama", "mock"],
         default="mock",
         help="Extraction engine (default: mock for offline demo)"
     )
     parser.add_argument(
         "-m", "--model",
         default=DEFAULT_GEMINI_MODEL,
-        help="Gemini model name (optional override; defaults to GEMINI_MODEL or gemini-flash-latest)"
+        help="Model name override (Gemini model or OpenRouter model ID)"
     )
     parser.add_argument(
         "-k", "--api-key",
-        default=os.getenv("GEMINI_API_KEY"),
-        help="Gemini API Key (or set GEMINI_API_KEY environment variable)"
+        default=None,
+        help="API Key (defaults to GEMINI_API_KEY or OPENROUTER_API_KEY)"
     )
     parser.add_argument(
         "-o", "--output",
@@ -177,11 +181,14 @@ def main():
     input_path = Path(args.input)
     output_dir = Path(args.output)
     template_path = Path(args.template) if args.template else None
+    resolved_api_key = args.api_key or (
+        os.getenv("OPENROUTER_API_KEY") if args.engine == "openrouter" else os.getenv("GEMINI_API_KEY")
+    )
 
     run_pipeline(
         input_path=input_path,
         engine=args.engine,
-        api_key=args.api_key,
+        api_key=resolved_api_key,
         model=args.model,
         output_dir=output_dir,
         template_path=template_path

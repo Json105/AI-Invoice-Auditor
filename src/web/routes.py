@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from ..models import AuditStatus
 from ..exporter import ExpenseExporter
 from ..extractors.gemini_extractor import DEFAULT_GEMINI_MODEL
+from ..extractors.openrouter_extractor import DEFAULT_OPENROUTER_MODEL, OPENROUTER_FREE_VISION_MODELS
 from ..template_exporter import TemplateExpenseExporter
 from ..main import get_extractor
 from ..database import (
@@ -87,10 +88,14 @@ async def health_check():
 async def get_config():
     """Return runtime configuration and API key availability."""
     has_key = bool(os.getenv("GEMINI_API_KEY"))
+    has_openrouter_key = bool(os.getenv("OPENROUTER_API_KEY"))
     return {
         "has_server_api_key": has_key,
+        "has_openrouter_api_key": has_openrouter_key,
         "default_engine": "gemini",
         "default_model": DEFAULT_GEMINI_MODEL,
+        "default_openrouter_model": DEFAULT_OPENROUTER_MODEL,
+        "openrouter_models": OPENROUTER_FREE_VISION_MODELS,
         "template_available": Path("Template.xlsx").exists()
     }
 

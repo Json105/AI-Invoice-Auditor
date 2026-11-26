@@ -9,7 +9,7 @@
 
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-2563EB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Web-FastAPI%20%2B%20SQLAdmin-059669?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![AI Engines](https://img.shields.io/badge/AI-Gemini%20%7C%20Ollama%20%7C%20TW%20QR%20%7C%20Mock-4285F4?style=flat-square)](#)
+[![AI Engines](https://img.shields.io/badge/AI-Gemini%20%7C%20OpenRouter%20%7C%20Ollama%20%7C%20TW%20QR%20%7C%20Mock-4285F4?style=flat-square)](#)
 [![Docker Ready](https://img.shields.io/badge/Deploy-Docker%20%2B%20SQLite-0EA5E9?style=flat-square&logo=docker&logoColor=white)](DOCKER_GUIDE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F59E0B?style=flat-square)](LICENSE)
 
@@ -38,8 +38,9 @@
 1. **📱 極簡 SaaS 介面、4 層 RWD 與 PWA 手機桌面安裝**
    * 介面遵循極簡原則，日常操作聚焦上傳與核心結果；篩選工具列（`🔍 篩選`）、進階引擎／匯率設定與教學指引皆採預設折疊，需要時一鍵展開。
    * 內建 **PWA (`manifest.json` + `/sw.js`)**，手機瀏覽器點擊「加入主畫面」即可像原生 App 一樣一鍵打開拍照上傳（Service Worker 嚴格略過 `/api/` 與 `/admin` 快取，不暫存任何帳密或敏感單據）。
-2. **🤖 多引擎 AI 架構 & 輕鬆擴充（Gemini / Ollama / OpenAI 相容延伸）**
+2. **🤖 多引擎 AI 架構 & 輕鬆擴充（Gemini / OpenRouter 免費視覺 / Ollama）**
    * **Google Gemini**：雲端多模態視覺理解，支援中／英／日／東南亞／歐美跨國單據與 Pydantic v2 嚴格 JSON Schema 輸出。
+   * **OpenRouter 免費視覺模型（POC 推薦）**：內建精選多模態清單（首選 `Google: Gemma 4 31B (free)`、複雜多收據 `NVIDIA: Nemotron 3.5 Super VL (free)`、高速批次 `Gemma 4 26B A4B (free)`、中文強化 `Ling 3.2 Flash (free)` 與 `openrouter/free`），並具 **HTTP 429 限流自動切換備援模型**。
    * **地端 Ollama（如 `llama3.2-vision`、`qwen2.5-vl`）**：Web 前端引擎選單與 CLI 皆可直接切換，高敏感憑證推論**完全不出企業內網**。
    * **確定性 Mock 引擎**與標準 **`BaseInvoiceExtractor` 抽象介面**（`extract()` / `extract_many()`）：無需 API Key 即可測試全流程，亦方便擴充串接 OpenAI GPT-4o、Claude 或任何 OpenAI-Compatible API（vLLM / Azure OpenAI）。
 3. **🧳 出差報銷專案組合（Business Trip Bundles）**
@@ -209,7 +210,9 @@ python3 -m src.main --input /path/to/your/invoices --engine ollama --template Te
 
 | 環境變數名稱 | 必要性 | 說明 |
 | :--- | :--- | :--- |
-| `GEMINI_API_KEY` | 選填 | Google Gemini API Key；留空時仍可使用地端 Ollama、台灣 QR 解碼或 Mock 模式 |
+| `GEMINI_API_KEY` | 選填 | Google Gemini API Key；留空時仍可使用 OpenRouter、地端 Ollama、台灣 QR 解碼或 Mock 模式 |
+| `OPENROUTER_API_KEY` | 選填 | OpenRouter API Key（可使用 Gemma 4 31B / Nemotron 3.5 Super VL 等免費視覺模型） |
+| `OPENROUTER_MODEL` | 選填 | OpenRouter 預設主模型 ID，預設為 `google/gemma-4-31b-it:free` |
 | `JWT_SECRET_KEY` | 正式必設 | JWT 登入權杖與 HMAC 限時預覽連結的簽章密鑰（請設為高強度隨機值） |
 | `ADMIN_SESSION_SECRET` | 正式必設 | `/admin` SQLAdmin 管理後台 Session Cookie 加密密鑰 |
 | `DATABASE_URL` | 選填 | 資料庫連線字串，預設為 `sqlite:///data/invoices.db`（亦支援 PostgreSQL 連線格式） |

@@ -9,7 +9,7 @@
 
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-2563EB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Web-FastAPI%20%2B%20SQLAdmin-059669?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![AI Engines](https://img.shields.io/badge/AI-Gemini%20%7C%20Ollama%20%7C%20TW%20QR%20%7C%20Mock-4285F4?style=flat-square)](#)
+[![AI Engines](https://img.shields.io/badge/AI-Gemini%20%7C%20OpenRouter%20%7C%20Ollama%20%7C%20TW%20QR%20%7C%20Mock-4285F4?style=flat-square)](#)
 [![Docker Ready](https://img.shields.io/badge/Deploy-Docker%20%2B%20SQLite-0EA5E9?style=flat-square&logo=docker&logoColor=white)](DOCKER_GUIDE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F59E0B?style=flat-square)](LICENSE)
 
@@ -38,8 +38,9 @@ For SMBs, startups, and lean operations teams, heavy enterprise expense SaaS sui
 1. **📱 Minimalist SaaS UI, 4-Tier RWD & Installable PWA**
    * Clean distraction-free upload workspace with collapsible advanced settings, guide drawer, and on-demand list filters (`🔍 篩選`).
    * **Progressive Web App (`manifest.json` + `/sw.js`)**: Install directly onto mobile home screens for native-like receipt capture without image compression; Service Worker strictly bypasses `/api/` and `/admin` routes so credentials and receipts are never cached.
-2. **🤖 Multi-Engine AI Architecture & Easy Extensibility (Gemini / Ollama / OpenAI-Compatible)**
+2. **🤖 Multi-Engine AI Architecture & Easy Extensibility (Gemini / OpenRouter Free Vision / Ollama)**
    * **Google Gemini**: High-accuracy multimodal vision parsing across domestic and international receipts into strict Pydantic v2 JSON schemas.
+   * **OpenRouter Free Vision Models (Ideal for POC)**: Curated multimodal lineup (`google/gemma-4-31b-it:free`, `nvidia/nemotron-3.5-super-vl:free`, `google/gemma-4-26b-a4b-it:free`, `inclusionai/ling-3.2-flash:free`, and `openrouter/free`) with **automatic HTTP 429 rate-limit fallback**.
    * **On-Premise Ollama (`llama3.2-vision`, `qwen2.5-vl`, etc.)**: Selectable directly from both the Web UI dropdown and CLI for 100% air-gapped internal inference.
    * **Deterministic Mock Engine & `BaseInvoiceExtractor` Interface**: Run complete offline verification without an API key, or subclass `BaseInvoiceExtractor` (`extract()` / `extract_many()`) to plug in OpenAI GPT-4o, Claude, vLLM, or any OpenAI-compatible endpoint.
 3. **🧳 Business Trip Bundles (`出差報銷專案組合`)**
@@ -207,7 +208,9 @@ Copy [`.env.example`](.env.example) to `.env` to configure:
 
 | Variable | Requirement | Description |
 | :--- | :--- | :--- |
-| `GEMINI_API_KEY` | Optional | Google Gemini API key; Mock, TW QR pre-decode, and local Ollama work without it |
+| `GEMINI_API_KEY` | Optional | Google Gemini API key; OpenRouter, Mock, TW QR pre-decode, and local Ollama work without it |
+| `OPENROUTER_API_KEY` | Optional | OpenRouter API key for curated free/paid multimodal vision models |
+| `OPENROUTER_MODEL` | Optional | Default OpenRouter vision model ID (defaults to `google/gemma-4-31b-it:free`) |
 | `JWT_SECRET_KEY` | Required in Prod | Signing key for JWT access tokens and HMAC presigned preview links |
 | `ADMIN_SESSION_SECRET` | Required in Prod | Session cookie signing key for the `/admin` SQLAdmin console |
 | `DATABASE_URL` | Optional | SQLAlchemy connection string (defaults to `sqlite:///data/invoices.db`; PostgreSQL supported) |
