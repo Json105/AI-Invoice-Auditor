@@ -17,6 +17,7 @@ from ..database import (
 from ..main import get_extractor
 from ..extractors.gemini_extractor import DEFAULT_GEMINI_MODEL
 from ..models import AuditReport, AuditStatus
+from .ai_policy import QuotaExceededError
 from .document_splitter import expand_uploaded_document
 from .ingestion_pipeline import audit_expanded_items
 from .storage_service import storage_service
@@ -236,6 +237,8 @@ class WatchFolderService:
                     total_expanded_pages += len(expanded_paths)
                     total_qr_decoded += qr_cnt
                     scanned_files_count += 1
+                except QuotaExceededError:
+                    raise
                 except Exception:
                     fail_dest = failed_dir / f"{stamp}_{uuid.uuid4().hex[:4]}_{src_file.name}"
                     try:

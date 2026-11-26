@@ -152,6 +152,10 @@
           
           <!-- 1. MINIMALIST HERO INGESTION COMMAND CENTER -->
           <div class="hero-command-card">
+            <div id="quota-exceeded-banner" class="hidden" style="margin-bottom: 0.75rem; padding: 0.7rem 0.95rem; border-radius: 10px; background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;">
+              <span id="quota-exceeded-text" class="text-sm" style="font-weight: 600;">⚠️ 目前辨識額度已用完，請稍後再試或聯繫系統管理員處理。</span>
+              <button type="button" class="btn-link-inline" onclick="hideQuotaExceededNotice()">關閉</button>
+            </div>
             
             <!-- Trip Bundle Selector Bar (將分批上傳收斂進同一次出差專案) -->
             <div id="upload-trip-bar" class="upload-trip-bar">
@@ -174,7 +178,7 @@
             <!-- Collapsible Ingestion, FX & Scanner Folder Settings (展開才顯示進階設定，平常極簡隱藏) -->
             <details class="advanced-settings-panel">
               <summary class="advanced-settings-summary">
-                <span>⚙️ 進階設定：匯率模式 · 批次拆頁 · AI 引擎 · 事務機監控資料夾</span>
+                <span id="advanced-settings-title">⚙️ 進階設定：匯率模式 · 批次拆頁 · AI 引擎 · 事務機監控資料夾</span>
                 <span id="engine-badge-label" class="badge-mini-muted">Gemini</span>
               </summary>
               <div class="advanced-settings-body">

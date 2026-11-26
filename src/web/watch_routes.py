@@ -82,6 +82,8 @@ async def trigger_watch_folder_scan(
             is_privileged=is_privileged_user(current_user),
             enable_fallback=effective_ai["enable_fallback"],
         )
+    except QuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"掃描匯入失敗: {str(exc)}")
 

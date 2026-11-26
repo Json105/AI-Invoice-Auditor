@@ -461,12 +461,26 @@ function isModelLockedForCurrentUser() {
   return Boolean(serverAiPolicy.lock_model_for_non_admin) && !isAdminRole();
 }
 
+function showQuotaExceededNotice(message) {
+  const banner = document.getElementById('quota-exceeded-banner');
+  const textEl = document.getElementById('quota-exceeded-text');
+  if (textEl && message) {
+    textEl.textContent = `⚠️ ${message}`;
+  }
+  if (banner) banner.classList.remove('hidden');
+}
+
+function hideQuotaExceededNotice() {
+  const banner = document.getElementById('quota-exceeded-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
 function applyAiPolicyUI() {
   const adminControls = document.getElementById('admin-engine-controls');
   const managedBanner = document.getElementById('managed-ai-policy-banner');
-  const managedText = document.getElementById('managed-ai-policy-text');
   const engineHint = document.getElementById('engine-hint');
   const badgeLabel = document.getElementById('engine-badge-label');
+  const advTitle = document.getElementById('advanced-settings-title');
   const engineSelect = document.getElementById('engine-select');
   const orSelect = document.getElementById('openrouter-model-select');
 
@@ -486,20 +500,19 @@ function applyAiPolicyUI() {
 
   onEngineChange();
 
+  // Keep non-admin UX completely unaware of model internals; notify only when quota is exhausted
+  if (managedBanner) managedBanner.classList.add('hidden');
+
   if (isModelLockedForCurrentUser()) {
     if (adminControls) adminControls.classList.add('hidden');
     if (engineHint) engineHint.classList.add('hidden');
-    if (managedBanner) managedBanner.classList.remove('hidden');
-    if (badgeLabel) badgeLabel.textContent = '管理員統一配置';
-    if (managedText && serverAiPolicy) {
-      const dailyLimit = Number(serverAiPolicy.daily_limit_per_user || 0);
-      const quotaHint = dailyLimit > 0 ? `（每人每日上限 ${dailyLimit} 次）` : '';
-      managedText.textContent = `🔒 AI 智慧辨識服務已由管理員統一配置${quotaHint}，直接上傳單據即可自動辨識`;
-    }
+    if (badgeLabel) badgeLabel.classList.add('hidden');
+    if (advTitle) advTitle.textContent = '⚙️ 進階設定：匯率模式 · 批次拆頁 · 事務機監控資料夾';
   } else {
     if (adminControls) adminControls.classList.remove('hidden');
     if (engineHint) engineHint.classList.remove('hidden');
-    if (managedBanner) managedBanner.classList.add('hidden');
+    if (badgeLabel) badgeLabel.classList.remove('hidden');
+    if (advTitle) advTitle.textContent = '⚙️ 進階設定：匯率模式 · 批次拆頁 · AI 引擎 · 事務機監控資料夾';
   }
 }
 
@@ -608,6 +621,7 @@ async function scanWatchFolder() {
   const tripId = tripIdRaw ? parseInt(tripIdRaw, 10) : null;
 
   if (btn) btn.disabled = true;
+  hideQuotaExceededNotice();
   try {
     const res = await authFetch('/api/watch-folder/scan', {
       method: 'POST',
@@ -624,7 +638,15 @@ async function scanWatchFolder() {
       })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || '掃描失敗');
+    if (!res.ok) {
+      if (res.status === 429) {
+        const quotaMsg = data.detail || '目前辨識額度已用完，請稍後再試或聯繫系統管理員處理。';
+        showQuotaExceededNotice(quotaMsg);
+        alert(`⚠️ ${quotaMsg}`);
+        return;
+      }
+      throw new Error(data.detail || '掃描失敗');
+    }
     await loadWatchFolderStatus();
     if ((data.total || 0) === 0) {
       alert(`目前監控資料夾（${data.watch_dir}）沒有待處理的新檔案。`);
@@ -893,6 +915,7 @@ async function startAudit() {
   }
 
   // UI State: Loading
+  hideQuotaExceededNotice();
   document.getElementById('btn-start-audit').disabled = true;
   document.getElementById('audit-empty').classList.add('hidden');
   document.getElementById('audit-table-wrapper').classList.add('hidden');
@@ -959,6 +982,13 @@ async function startAudit() {
 
       if (!response.ok) {
         const err = await response.json();
+        if (response.status === 429) {
+          const quotaMsg = err.detail || '目前辨識額度已用完，請稍後再試或聯繫系統管理員處理。';
+          showQuotaExceededNotice(quotaMsg);
+          const quotaErr = new Error(quotaMsg);
+          quotaErr.isQuotaExceeded = true;
+          throw quotaErr;
+        }
         throw new Error(err.detail || '審核請求失敗');
       }
 
@@ -1011,7 +1041,11 @@ async function startAudit() {
     if (isPrivilegedRole()) loadApprovalSummaryBadge();
 
   } catch (error) {
-    alert(`執行審核發生錯誤: ${error.message}`);
+    if (error && error.isQuotaExceeded) {
+      alert(`⚠️ ${error.message}`);
+    } else {
+      alert(`執行審核發生錯誤: ${error.message}`);
+    }
     document.getElementById('audit-empty').classList.remove('hidden');
   } finally {
     document.getElementById('audit-loading').classList.add('hidden');

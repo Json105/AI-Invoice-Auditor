@@ -265,3 +265,38 @@ def test_sqladmin_views_and_ui_governance_elements(isolated_policy_db):
     assert 'id="managed-ai-policy-banner"' in html
     assert 'id="ai-governance-card"' in html
     assert 'id="admin-ai-policy-form"' in html
+    assert 'id="quota-exceeded-banner"' in html
+
+
+def test_upstream_429_exhaustion_returns_429_without_leaking_model_names(isolated_policy_db, monkeypatch):
+    adm_h = _login_headers("admin@company.local", "Admin1234!")
+    emp_h = _login_headers("employee@company.local", "User1234!")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-server-secret")
+
+    client.put(
+        "/api/admin/ai-policy",
+        headers=adm_h,
+        json={
+            "active_engine": "openrouter",
+            "active_model": "google/gemma-4-31b-it:free",
+            "enable_fallback": False,
+            "lock_model_for_non_admin": True,
+            "daily_limit_per_user": 0,
+            "monthly_limit_total": 0,
+        },
+    )
+
+    resp_429 = MagicMock(status_code=429, text="Provider rate limit exceeded")
+    with patch("src.extractors.openrouter_extractor.requests.post", return_value=resp_429):
+        res = client.post(
+            "/api/audit",
+            headers=emp_h,
+            data={"engine": "openrouter", "apply_template": "false"},
+            files=[("files", ("upstream_429.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png"))],
+        )
+
+    assert res.status_code == 429
+    detail = res.json()["detail"]
+    assert "額度已用完" in detail
+    assert "gemma" not in detail.lower()
+    assert "openrouter" not in detail.lower()

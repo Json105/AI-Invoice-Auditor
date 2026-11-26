@@ -6,8 +6,23 @@ from typing import List, Optional, Tuple
 from ..auditor import InvoiceAuditor
 from ..database import DEFAULT_DB_PATH
 from ..models import AuditIssue, AuditReport, AuditStatus, DocumentType, InvoiceData
+from .ai_policy import QuotaExceededError
 from .fx_service import fx_service, normalize_fx_code
 from .tw_einvoice_qr import try_decode_taiwan_einvoice_from_image
+
+_QUOTA_ERROR_MARKERS = (
+    "http 429",
+    "rate limit",
+    "resource_exhausted",
+    "insufficient_quota",
+    "quota exceeded",
+    "too many requests",
+)
+
+
+def _is_upstream_quota_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _QUOTA_ERROR_MARKERS)
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp"}
 
@@ -84,7 +99,13 @@ def audit_expanded_items(
                 )
                 report = auditor.audit(invoice_data, file_path=str(item_path))
                 reports.append(report)
+        except QuotaExceededError:
+            raise
         except Exception as e:
+            if _is_upstream_quota_error(e):
+                raise QuotaExceededError(
+                    "系統辨識服務目前額度已用完，請稍後再試或聯繫系統管理員處理。"
+                ) from e
             failed_inv = InvoiceData(
                 document_type=DocumentType.GENERAL_RECEIPT,
                 total_amount=0.0,

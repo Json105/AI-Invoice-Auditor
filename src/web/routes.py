@@ -394,14 +394,29 @@ async def audit_documents(
 
     from ..services.ingestion_pipeline import audit_expanded_items
 
-    reports, qr_fast_decoded_count = audit_expanded_items(
-        expanded_paths=expanded_paths,
-        extractor=extractor,
-        multi_receipt=multi_receipt,
-        fx_mode=fx_mode,
-        manual_exchange_rate=manual_exchange_rate,
-        db_path=DEFAULT_DB_PATH,
-    )
+    try:
+        reports, qr_fast_decoded_count = audit_expanded_items(
+            expanded_paths=expanded_paths,
+            extractor=extractor,
+            multi_receipt=multi_receipt,
+            fx_mode=fx_mode,
+            manual_exchange_rate=manual_exchange_rate,
+            db_path=DEFAULT_DB_PATH,
+        )
+    except QuotaExceededError as exc:
+        try:
+            record_ai_usage(
+                user=current_user,
+                engine=effective_ai["engine"],
+                model=effective_ai["model"],
+                documents_count=0,
+                ai_calls_count=0,
+                source="web_audit",
+                status="quota_exceeded",
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=429, detail=str(exc))
 
     actual_model = (
         getattr(extractor, "last_used_model", None)
